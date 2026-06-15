@@ -39,9 +39,43 @@ def fake_embedder():
 
 @pytest.fixture
 def store(fake_embedder):
+    import uuid
+
     import chromadb
 
     from opendomainmcp.store import ChromaStore
 
+    # EphemeralClient is process-shared, so isolate each test in its own collection.
     client = chromadb.EphemeralClient()
-    return ChromaStore(fake_embedder, data_dir=None, client=client)
+    return ChromaStore(
+        fake_embedder, data_dir=None,
+        collection_name=f"test_{uuid.uuid4().hex}", client=client,
+    )
+
+
+class FakeExtractor:
+    """Deterministic offline stand-in for ClaudeExtractor."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def extract(self, text, kind, language=None):
+        from opendomainmcp.models import KnowledgeUnit
+
+        self.calls += 1
+        first_word = text.strip().split()[0] if text.strip() else ""
+        return KnowledgeUnit(summary=f"about {first_word}", concepts=[kind])
+
+
+@pytest.fixture
+def fake_extractor():
+    return FakeExtractor()
+
+
+@pytest.fixture
+def pipeline(store, fake_extractor):
+    from opendomainmcp.config import Settings
+    from opendomainmcp.ingest.pipeline import Pipeline
+
+    settings = Settings(chunk_size=200, chunk_overlap=20)
+    return Pipeline(store, fake_extractor, settings)
