@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -38,6 +39,11 @@ class Settings(BaseSettings):
     # Storage
     data_dir: Path = Path(".opendomain")
     collection_name: str = "domain_knowledge"
+
+    # Security: when set, ingestion is confined to this directory tree. Paths
+    # that resolve outside it (including via symlinks) are rejected. Unset means
+    # no restriction (trusted local use); set it when exposing the web/MCP server.
+    ingest_root: Optional[Path] = None
 
     # Embedding
     embedder_backend: str = "local"  # local | openai | voyage

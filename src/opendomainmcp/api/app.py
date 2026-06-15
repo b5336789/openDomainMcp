@@ -114,6 +114,15 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
 
     @app.get("/api/ingest/stream")
     async def ingest_stream(path: str, sync: bool = False, ctx: Context = Depends(get_ctx)):
+        # Reject paths that escape the configured ingest root before streaming.
+        if ctx.settings.ingest_root is not None:
+            from ..ingest.pipeline import PathNotAllowedError, _resolve_within
+
+            try:
+                _resolve_within(Path(path), ctx.settings.ingest_root)
+            except PathNotAllowedError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
