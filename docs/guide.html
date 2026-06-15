@@ -212,7 +212,8 @@ opendomainmcp clear</pre>
       <div class="ico">🔌</div>
       <h3>MCP 伺服器</h3>
       <p>透過 stdio 把工具提供給支援 MCP 的客戶端（例如 Claude）：
-        <code>ingest_path</code>、<code>search_knowledge</code>、<code>get_stats</code>。</p>
+        <code>ingest_path</code>、<code>search_knowledge</code>、<code>ask</code>、
+        <code>get_stats</code>、<code>list_collections</code>。</p>
       <pre>opendomainmcp-server</pre>
     </div>
     <div class="card">
@@ -229,23 +230,30 @@ opendomainmcp clear</pre>
 <div class="wrap">
   <span class="eyebrow">Dashboard</span>
   <h2>網頁主控台一覽</h2>
-  <p class="sub">五個分頁，從檢視現況、匯入資料、搜尋，到逐筆編輯與調整設定，都在同一處完成。</p>
+  <p class="sub">六個分頁，從檢視現況、匯入、搜尋、問答，到逐筆編輯與調整設定，都在同一處完成；
+    左側並可建立與切換多個知識庫。</p>
   <div class="tour">
     <div class="row"><div class="tag">📊</div><div>
       <h4>總覽 Dashboard</h4>
-      <p>掌握資料庫的當前狀態：已索引的片段數量、使用中的嵌入模型與維度、資料存放位置，以及知識萃取是否啟用。</p></div></div>
+      <p>掌握資料庫的當前狀態：已索引的片段數量、使用中的嵌入模型與維度、資料存放位置，以及知識萃取是否啟用。
+        側欄的「知識庫」切換器可在不同專案之間切換或新建。</p></div></div>
     <div class="row"><div class="tag">📥</div><div>
       <h4>匯入 Ingest</h4>
-      <p>上傳檔案或填入路徑後，進度會即時回報；從載入、切塊、萃取、嵌入到入庫，每個階段都看得到。</p></div></div>
+      <p>上傳檔案或填入路徑後，進度會即時回報；從載入、切塊、萃取、嵌入到入庫，每個階段都看得到。
+        勾選「Sync」還能在重新匯入時，順手清除已刪除檔案留下的舊片段。</p></div></div>
     <div class="row"><div class="tag">🔎</div><div>
       <h4>搜尋 Explore</h4>
-      <p>輸入問題便得到一組排序後的結果。每張卡片標示來源、符號名稱與相似度，並附上該段的摘要與關鍵概念。</p></div></div>
+      <p>採 dense 與 BM25 混合檢索，對精確的符號名也找得準；可再以語言或來源路徑過濾。
+        每張卡片標示來源、符號與相似度，並附上該段摘要與關鍵概念。</p></div></div>
+    <div class="row"><div class="tag">💬</div><div>
+      <h4>問答 Ask</h4>
+      <p>把問題交給系統，它會先找出最相關的片段，再由 Claude 寫出一段附來源引用的答案（需設定 API 金鑰）。</p></div></div>
     <div class="row"><div class="tag">✏️</div><div>
       <h4>瀏覽與編輯 Browse</h4>
       <p>以列表檢視所有已存內容，可逐筆查看、就地修正中繼資料，或刪除不再需要的項目。</p></div></div>
     <div class="row"><div class="tag">⚙️</div><div>
       <h4>設定 Settings</h4>
-      <p>嵌入後端、萃取模型、切塊大小等參數，都能在頁面上直接調整；變更會寫入設定檔並立即套用。</p></div></div>
+      <p>嵌入後端、萃取模型、切塊大小、檢索模式等參數，都能在頁面上直接調整；變更會寫入設定檔並立即套用。</p></div></div>
   </div>
 </div></section>
 
@@ -282,9 +290,12 @@ opendomainmcp clear</pre>
   <h2>常見問題</h2>
   <div style="margin-top:24px">
     <details open><summary>一定要付費的 API 金鑰嗎？</summary>
-      <p>向量化（嵌入）預設使用本地模型，不需任何金鑰。只有知識萃取會呼叫 Anthropic API，
-        並從環境變數 <code>ANTHROPIC_API_KEY</code> 與 <code>ANTHROPIC_BASE_URL</code> 取得設定；
-        若暫時用不到，把 <code>ODM_EXTRACT_KNOWLEDGE</code> 設為 <code>false</code> 即可。</p></details>
+      <p>向量化（嵌入）與混合搜尋預設使用本地模型，不需任何金鑰。只有兩項會呼叫 Anthropic API：
+        知識萃取與「Ask」問答，兩者皆從 <code>ANTHROPIC_API_KEY</code> 與 <code>ANTHROPIC_BASE_URL</code> 取得設定。
+        不需萃取時把 <code>ODM_EXTRACT_KNOWLEDGE</code> 設為 <code>false</code> 即可；沒有金鑰時，Ask 會明確提示需要設定，而非回空答案。</p></details>
+    <details><summary>可以同時管理多個專案的知識嗎？</summary>
+      <p>可以。系統支援多個「知識庫」（collection），在側欄即可建立與切換，彼此資料互相隔離；
+        命令列用 <code>--collection</code>、MCP 工具用 <code>collection</code> 參數同樣可指定。</p></details>
     <details><summary>我的資料存放在哪裡？</summary>
       <p>預設在專案下的 <code>.opendomain/</code> 目錄：向量資料庫位於 <code>chroma/</code>，
         網頁上調整的設定則記在 <code>settings.json</code>。若想換位置，設定 <code>ODM_DATA_DIR</code> 即可。</p></details>
