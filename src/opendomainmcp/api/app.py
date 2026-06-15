@@ -28,6 +28,9 @@ class SearchRequest(BaseModel):
     query: str
     top_k: int = 5
     kind: str | None = None
+    language: str | None = None
+    symbol: str | None = None
+    source_contains: str | None = None
 
 
 class ItemPatch(BaseModel):
@@ -62,8 +65,13 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
 
     @app.post("/api/search")
     def search(req: SearchRequest, ctx: Context = Depends(get_ctx)):
-        where = {"kind": req.kind} if req.kind else None
-        results = ctx.store.search(req.query, top_k=req.top_k, where=where)
+        from ..store import build_where
+
+        where = build_where({"kind": req.kind, "language": req.language, "symbol": req.symbol})
+        results = ctx.store.search(
+            req.query, top_k=req.top_k, where=where,
+            mode=ctx.settings.search_mode, source_contains=req.source_contains,
+        )
         return [r.to_dict() for r in results]
 
     # -- ingestion ------------------------------------------------------

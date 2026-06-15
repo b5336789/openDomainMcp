@@ -4,12 +4,18 @@ import { api, SearchResult } from "../api";
 export default function Explore() {
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState("");
+  const [language, setLanguage] = useState("");
+  const [source, setSource] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searched, setSearched] = useState(false);
 
   async function run() {
     if (!query) return;
-    const res = await api.search(query, 8, kind || null);
+    const res = await api.search(query, 8, {
+      kind: kind || null,
+      language: language || null,
+      source_contains: source || null,
+    });
     setResults(res);
     setSearched(true);
   }
@@ -38,6 +44,22 @@ export default function Explore() {
         <button onClick={run} className="rounded bg-slate-900 px-4 py-2 text-white">
           Search
         </button>
+      </div>
+
+      <div className="flex gap-2 text-sm">
+        <input
+          className="rounded border px-3 py-1"
+          placeholder="language (e.g. python)"
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+        />
+        <input
+          className="flex-1 rounded border px-3 py-1"
+          placeholder="source contains…"
+          value={source}
+          onChange={(e) => setSource(e.target.value)}
+        />
+        <span className="self-center text-xs text-slate-400">hybrid search (dense + BM25)</span>
       </div>
 
       {searched && results.length === 0 && <p className="text-slate-500">No results.</p>}

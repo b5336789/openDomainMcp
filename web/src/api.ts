@@ -16,6 +16,12 @@ export interface SearchResult {
   metadata: Record<string, string>;
 }
 
+export interface SearchFilters {
+  kind?: string | null;
+  language?: string | null;
+  source_contains?: string | null;
+}
+
 export interface Item {
   id: string;
   text: string;
@@ -40,11 +46,11 @@ async function json<T>(res: Response): Promise<T> {
 export const api = {
   stats: () => fetch("/api/stats").then(json<Stats>),
 
-  search: (query: string, top_k: number, kind: string | null) =>
+  search: (query: string, top_k: number, filters: SearchFilters = {}) =>
     fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, top_k, kind }),
+      body: JSON.stringify({ query, top_k, ...filters }),
     }).then(json<SearchResult[]>),
 
   items: (limit: number, offset: number, kind: string | null) => {

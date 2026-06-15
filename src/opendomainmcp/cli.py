@@ -28,8 +28,13 @@ def _cmd_ingest(ctx, args) -> int:
 
 
 def _cmd_search(ctx, args) -> int:
-    where = {"kind": args.kind} if args.kind else None
-    results = ctx.store.search(args.query, top_k=args.top_k, where=where)
+    from .store import build_where
+
+    where = build_where({"kind": args.kind, "language": args.language, "symbol": args.symbol})
+    results = ctx.store.search(
+        args.query, top_k=args.top_k, where=where,
+        mode=ctx.settings.search_mode, source_contains=args.source,
+    )
     if not results:
         print("No results.")
         return 0
@@ -74,6 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("query")
     p_search.add_argument("--top-k", type=int, default=5)
     p_search.add_argument("--kind", choices=["code", "text"], default=None)
+    p_search.add_argument("--language", default=None, help="Filter by code language")
+    p_search.add_argument("--symbol", default=None, help="Filter by exact symbol name")
+    p_search.add_argument("--source", default=None, help="Filter by source path substring")
     p_search.set_defaults(func=_cmd_search)
 
     p_stats = sub.add_parser("stats", help="Show collection statistics")

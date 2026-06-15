@@ -34,10 +34,22 @@ def ingest_path(path: str, sync: bool = False) -> dict:
 
 
 @mcp.tool()
-def search_knowledge(query: str, top_k: int = 5, kind: Optional[str] = None) -> list[dict]:
-    """Search the knowledge base. ``kind`` may be 'code' or 'text' to filter."""
-    where = {"kind": kind} if kind else None
-    results = _context().store.search(query, top_k=top_k, where=where)
+def search_knowledge(
+    query: str,
+    top_k: int = 5,
+    kind: Optional[str] = None,
+    language: Optional[str] = None,
+    symbol: Optional[str] = None,
+) -> list[dict]:
+    """Search the knowledge base (hybrid dense + BM25 by default).
+
+    Optional filters: ``kind`` ('code'/'text'), ``language``, exact ``symbol``.
+    """
+    from .store import build_where
+
+    ctx = _context()
+    where = build_where({"kind": kind, "language": language, "symbol": symbol})
+    results = ctx.store.search(query, top_k=top_k, where=where, mode=ctx.settings.search_mode)
     return [r.to_dict() for r in results]
 
 

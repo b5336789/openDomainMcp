@@ -25,6 +25,7 @@ EDITABLE_FIELDS = (
     "chunk_overlap",
     "code_max_chunk_chars",
     "extract_concurrency",
+    "search_mode",
 )
 
 
@@ -52,6 +53,9 @@ class Settings(BaseSettings):
 
     # Code (AST) chunking fallback
     code_max_chunk_chars: int = 2000
+
+    # Retrieval: "vector" (dense only) or "hybrid" (dense + BM25 via RRF)
+    search_mode: str = "hybrid"
 
     @property
     def overrides_path(self) -> Path:
