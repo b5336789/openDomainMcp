@@ -72,6 +72,19 @@ def test_upload(client):
     assert (resp["path"]).endswith(resp["path"].split("/")[-1])
 
 
+def test_collections_endpoint(client):
+    tc, _, _ = client
+    data = tc.get("/api/collections").json()
+    assert "active" in data and isinstance(data["collections"], list)
+
+    name = "apiproj_xyz"
+    tc.post("/api/collections", json={"name": name})
+    names = {c["name"] for c in tc.get("/api/collections").json()["collections"]}
+    assert name in names
+
+    assert tc.delete(f"/api/collections/{name}").json()["deleted"] == name
+
+
 def test_settings_roundtrip_and_validation(client):
     tc, _, _ = client
     assert tc.get("/api/settings").json()["editable"]["chunk_size"] == 1200

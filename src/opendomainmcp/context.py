@@ -22,13 +22,13 @@ class Context:
     pipeline: Pipeline
 
 
-def build_context(settings: Settings | None = None) -> Context:
+def build_context(settings: Settings | None = None, collection: str | None = None) -> Context:
     settings = settings or get_settings()
     embedder = get_embedder(settings)
     store = ChromaStore(
         embedder,
         data_dir=settings.data_dir / "chroma",
-        collection_name=settings.collection_name,
+        collection_name=collection or settings.collection_name,
     )
     extractor = get_extractor(settings)
     pipeline = Pipeline(store, extractor, settings)

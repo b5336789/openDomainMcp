@@ -46,15 +46,27 @@ class SettingsPatch(BaseModel):
     values: dict
 
 
+class CollectionCreate(BaseModel):
+    name: str
+
+
 def create_app(context: Context | None = None, context_factory=build_context) -> FastAPI:
     app = FastAPI(title="openDomainMcp")
-    app.state.context = context
+    app.state.context = context          # pinned single context (tests / single use)
+    app.state.contexts = {}              # per-collection cache (real multi-collection)
     app.state.context_factory = context_factory
 
-    def get_ctx() -> Context:
-        if app.state.context is None:
-            app.state.context = app.state.context_factory()
-        return app.state.context
+    def get_ctx(request: Request) -> Context:
+        if app.state.context is not None:
+            return app.state.context
+        name = (
+            request.query_params.get("collection")
+            or request.headers.get("x-collection")
+            or get_settings().collection_name
+        )
+        if name not in app.state.contexts:
+            app.state.contexts[name] = app.state.context_factory(collection=name)
+        return app.state.contexts[name]
 
     # -- status & search ------------------------------------------------
     @app.get("/api/health")
@@ -173,9 +185,28 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
             ctx.settings.save_overrides(patch.values)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        # Force a rebuild so later requests pick up the new settings.
-        app.state.context = None
+        # Drop cached per-collection contexts so later requests pick up new settings.
+        app.state.contexts.clear()
         return JSONResponse({"updated": list(patch.values)})
+
+    # -- collections (knowledge bases) ----------------------------------
+    @app.get("/api/collections")
+    def list_collections(ctx: Context = Depends(get_ctx)):
+        return {
+            "active": ctx.store.stats()["collection"],
+            "collections": ctx.store.list_collections(),
+        }
+
+    @app.post("/api/collections")
+    def create_collection(body: CollectionCreate, ctx: Context = Depends(get_ctx)):
+        ctx.store.create_collection(body.name)
+        return {"created": body.name}
+
+    @app.delete("/api/collections/{name}")
+    def delete_collection(name: str, ctx: Context = Depends(get_ctx)):
+        ctx.store.drop_collection(name)
+        app.state.contexts.pop(name, None)
+        return {"deleted": name}
 
     # -- static SPA (built frontend), if present ------------------------
     if STATIC_DIR.exists():

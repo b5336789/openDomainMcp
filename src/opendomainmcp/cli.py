@@ -82,8 +82,17 @@ def _cmd_clear(ctx, args) -> int:
     return 0
 
 
+def _cmd_collections(ctx, args) -> int:
+    active = ctx.store.stats()["collection"]
+    for c in ctx.store.list_collections():
+        mark = "*" if c["name"] == active else " "
+        print(f"{mark} {c['name']}  ({c['count']} chunks)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="opendomainmcp", description=__doc__)
+    parser.add_argument("--collection", default=None, help="Knowledge base to use")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_ingest = sub.add_parser("ingest", help="Ingest a file or directory")
@@ -113,12 +122,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_clear = sub.add_parser("clear", help="Delete all indexed content")
     p_clear.set_defaults(func=_cmd_clear)
+
+    p_cols = sub.add_parser("collections", help="List knowledge bases (collections)")
+    p_cols.set_defaults(func=_cmd_collections)
     return parser
 
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
-    ctx = build_context()
+    ctx = build_context(collection=args.collection) if args.collection else build_context()
     return args.func(ctx, args)
 
 

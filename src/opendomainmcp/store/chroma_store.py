@@ -198,3 +198,19 @@ class ChromaStore:
             name=self._collection_name, metadata={"hnsw:space": "cosine"}
         )
         self._lexical_dirty = True
+
+    # -- collection administration (shared client) ----------------------
+    def list_collections(self) -> list[dict]:
+        out = []
+        for c in self._client.list_collections():
+            name = getattr(c, "name", c)
+            out.append({"name": name, "count": self._client.get_collection(name).count()})
+        return sorted(out, key=lambda d: d["name"])
+
+    def create_collection(self, name: str) -> None:
+        self._client.get_or_create_collection(
+            name=name, metadata={"hnsw:space": "cosine"}
+        )
+
+    def drop_collection(self, name: str) -> None:
+        self._client.delete_collection(name)

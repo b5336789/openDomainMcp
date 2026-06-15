@@ -48,6 +48,35 @@ export interface SettingsView {
   data_dir: string;
 }
 
+export interface Collection {
+  name: string;
+  count: number;
+}
+
+// --- Active collection (knowledge base) ----------------------------------
+let activeCollection: string | null = localStorage.getItem("odm_collection");
+
+export function getActiveCollection(): string | null {
+  return activeCollection;
+}
+
+export function setActiveCollection(name: string | null): void {
+  activeCollection = name;
+  if (name) localStorage.setItem("odm_collection", name);
+  else localStorage.removeItem("odm_collection");
+}
+
+function headers(extra: Record<string, string> = {}): Record<string, string> {
+  const h = { ...extra };
+  if (activeCollection) h["X-Collection"] = activeCollection;
+  return h;
+}
+
+function withCollection(url: string): string {
+  if (!activeCollection) return url;
+  return url + (url.includes("?") ? "&" : "?") + "collection=" + encodeURIComponent(activeCollection);
+}
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const detail = await res.text();
@@ -57,54 +86,74 @@ async function json<T>(res: Response): Promise<T> {
 }
 
 export const api = {
-  stats: () => fetch("/api/stats").then(json<Stats>),
+  stats: () => fetch("/api/stats", { headers: headers() }).then(json<Stats>),
 
   search: (query: string, top_k: number, filters: SearchFilters = {}) =>
     fetch("/api/search", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ query, top_k, ...filters }),
     }).then(json<SearchResult[]>),
+
+  ask: (query: string, top_k = 6) =>
+    fetch("/api/ask", {
+      method: "POST",
+      headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ query, top_k }),
+    }).then(json<Answer>),
 
   items: (limit: number, offset: number, kind: string | null) => {
     const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
     if (kind) params.set("kind", kind);
-    return fetch(`/api/items?${params}`).then(json<Item[]>);
+    return fetch(`/api/items?${params}`, { headers: headers() }).then(json<Item[]>);
   },
 
   updateItem: (id: string, metadata: Record<string, string>) =>
     fetch(`/api/items/${id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ metadata }),
     }).then(json<Item>),
 
   deleteItem: (id: string) =>
-    fetch(`/api/items/${id}`, { method: "DELETE" }).then(json<{ deleted: string }>),
+    fetch(`/api/items/${id}`, { method: "DELETE", headers: headers() }).then(
+      json<{ deleted: string }>
+    ),
 
   upload: (files: FileList) => {
     const form = new FormData();
     Array.from(files).forEach((f) => form.append("files", f));
-    return fetch("/api/upload", { method: "POST", body: form }).then(
+    return fetch("/api/upload", { method: "POST", headers: headers(), body: form }).then(
       json<{ path: string; files: string[] }>
     );
   },
 
-  ask: (query: string, top_k = 6) =>
-    fetch("/api/ask", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, top_k }),
-    }).then(json<Answer>),
-
-  getSettings: () => fetch("/api/settings").then(json<SettingsView>),
+  getSettings: () => fetch("/api/settings", { headers: headers() }).then(json<SettingsView>),
 
   patchSettings: (values: Record<string, string | number | boolean>) =>
     fetch("/api/settings", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ values }),
     }).then(json<{ updated: string[] }>),
+
+  collections: () =>
+    fetch("/api/collections", { headers: headers() }).then(
+      json<{ active: string; collections: Collection[] }>
+    ),
+
+  createCollection: (name: string) =>
+    fetch("/api/collections", {
+      method: "POST",
+      headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ name }),
+    }).then(json<{ created: string }>),
+
+  deleteCollection: (name: string) =>
+    fetch(`/api/collections/${encodeURIComponent(name)}`, {
+      method: "DELETE",
+      headers: headers(),
+    }).then(json<{ deleted: string }>),
 };
 
 // Stream ingest progress via Server-Sent Events. Returns an unsubscribe fn.
@@ -114,7 +163,9 @@ export function ingestStream(
   onDone: () => void,
   sync = false
 ): () => void {
-  const url = `/api/ingest/stream?path=${encodeURIComponent(path)}&sync=${sync}`;
+  const url = withCollection(
+    `/api/ingest/stream?path=${encodeURIComponent(path)}&sync=${sync}`
+  );
   const source = new EventSource(url);
   const handler = (ev: MessageEvent) => {
     try {
