@@ -33,6 +33,11 @@ class SearchRequest(BaseModel):
     source_contains: str | None = None
 
 
+class AskRequest(BaseModel):
+    query: str
+    top_k: int = 6
+
+
 class ItemPatch(BaseModel):
     metadata: dict
 
@@ -73,6 +78,15 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
             mode=ctx.settings.search_mode, source_contains=req.source_contains,
         )
         return [r.to_dict() for r in results]
+
+    @app.post("/api/ask")
+    def ask(req: AskRequest, ctx: Context = Depends(get_ctx)):
+        from ..query import AnswerError, answer_question
+
+        try:
+            return answer_question(req.query, ctx.store, ctx.settings, top_k=req.top_k)
+        except AnswerError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
 
     # -- ingestion ------------------------------------------------------
     @app.post("/api/upload")

@@ -26,6 +26,7 @@ EDITABLE_FIELDS = (
     "code_max_chunk_chars",
     "extract_concurrency",
     "search_mode",
+    "answer_model",
 )
 
 
@@ -56,6 +57,9 @@ class Settings(BaseSettings):
 
     # Retrieval: "vector" (dense only) or "hybrid" (dense + BM25 via RRF)
     search_mode: str = "hybrid"
+
+    # RAG answer synthesis (Anthropic)
+    answer_model: str = "claude-sonnet-4-6"
 
     @property
     def overrides_path(self) -> Path:

@@ -54,6 +54,21 @@ def search_knowledge(
 
 
 @mcp.tool()
+def ask(query: str, top_k: int = 6) -> dict:
+    """Answer a question from the indexed knowledge, with inline [n] citations.
+
+    Requires an Anthropic API key; returns ``{"error": ...}`` if unavailable.
+    """
+    from .query import AnswerError, answer_question
+
+    ctx = _context()
+    try:
+        return answer_question(query, ctx.store, ctx.settings, top_k=top_k)
+    except AnswerError as exc:
+        return {"error": str(exc)}
+
+
+@mcp.tool()
 def get_stats() -> dict:
     """Return collection statistics (document count, embedder, dimension)."""
     return _context().store.stats()

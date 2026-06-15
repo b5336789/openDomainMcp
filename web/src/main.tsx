@@ -5,6 +5,7 @@ import App from "./App";
 import Dashboard from "./pages/Dashboard";
 import Ingest from "./pages/Ingest";
 import Explore from "./pages/Explore";
+import Ask from "./pages/Ask";
 import Browse from "./pages/Browse";
 import Settings from "./pages/Settings";
 import "./index.css";
@@ -17,6 +18,7 @@ const router = createHashRouter([
       { index: true, element: <Dashboard /> },
       { path: "ingest", element: <Ingest /> },
       { path: "explore", element: <Explore /> },
+      { path: "ask", element: <Ask /> },
       { path: "browse", element: <Browse /> },
       { path: "settings", element: <Settings /> },
     ],

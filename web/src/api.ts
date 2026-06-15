@@ -28,6 +28,19 @@ export interface Item {
   metadata: Record<string, string>;
 }
 
+export interface Citation {
+  n: number;
+  id: string;
+  source: string | null;
+  symbol: string | null;
+  score: number;
+}
+
+export interface Answer {
+  answer: string;
+  citations: Citation[];
+}
+
 export interface SettingsView {
   editable: Record<string, string | number | boolean>;
   collection: string;
@@ -76,6 +89,13 @@ export const api = {
       json<{ path: string; files: string[] }>
     );
   },
+
+  ask: (query: string, top_k = 6) =>
+    fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k }),
+    }).then(json<Answer>),
 
   getSettings: () => fetch("/api/settings").then(json<SettingsView>),
 

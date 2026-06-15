@@ -51,6 +51,25 @@ def _cmd_search(ctx, args) -> int:
     return 0
 
 
+def _cmd_ask(ctx, args) -> int:
+    from .query import AnswerError, answer_question
+
+    try:
+        result = answer_question(args.query, ctx.store, ctx.settings, top_k=args.top_k)
+    except AnswerError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(result["answer"])
+    if result["citations"]:
+        print("\nSources:")
+        for c in result["citations"]:
+            loc = c["source"] or "?"
+            if c["symbol"]:
+                loc += f"::{c['symbol']}"
+            print(f"  [{c['n']}] {loc}")
+    return 0
+
+
 def _cmd_stats(ctx, args) -> int:
     for key, value in ctx.store.stats().items():
         print(f"{key:>12}: {value}")
@@ -83,6 +102,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_search.add_argument("--symbol", default=None, help="Filter by exact symbol name")
     p_search.add_argument("--source", default=None, help="Filter by source path substring")
     p_search.set_defaults(func=_cmd_search)
+
+    p_ask = sub.add_parser("ask", help="Ask a question; get a cited answer (needs API key)")
+    p_ask.add_argument("query")
+    p_ask.add_argument("--top-k", type=int, default=6)
+    p_ask.set_defaults(func=_cmd_ask)
 
     p_stats = sub.add_parser("stats", help="Show collection statistics")
     p_stats.set_defaults(func=_cmd_stats)
