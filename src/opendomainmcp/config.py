@@ -24,6 +24,7 @@ EDITABLE_FIELDS = (
     "chunk_size",
     "chunk_overlap",
     "code_max_chunk_chars",
+    "extract_concurrency",
 )
 
 
@@ -43,6 +44,7 @@ class Settings(BaseSettings):
     # Domain-knowledge extraction (Anthropic)
     extract_knowledge: bool = True
     extraction_model: str = "claude-sonnet-4-6"
+    extract_concurrency: int = 8  # parallel extraction calls per file
 
     # Text chunking
     chunk_size: int = 1200

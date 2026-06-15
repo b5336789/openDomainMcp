@@ -85,9 +85,10 @@ export const api = {
 export function ingestStream(
   path: string,
   onEvent: (e: Record<string, unknown>) => void,
-  onDone: () => void
+  onDone: () => void,
+  sync = false
 ): () => void {
-  const url = `/api/ingest/stream?path=${encodeURIComponent(path)}`;
+  const url = `/api/ingest/stream?path=${encodeURIComponent(path)}&sync=${sync}`;
   const source = new EventSource(url);
   const handler = (ev: MessageEvent) => {
     try {
@@ -97,7 +98,7 @@ export function ingestStream(
     }
   };
   // The backend names events by stage; listen to the ones we render.
-  ["load", "split", "extract", "embed", "store", "skip", "error", "done", "report"].forEach(
+  ["load", "split", "extract", "embed", "store", "prune", "skip", "error", "done", "report"].forEach(
     (name) => source.addEventListener(name, handler as EventListener)
   );
   source.addEventListener("report", () => {

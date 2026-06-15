@@ -4,12 +4,14 @@ import { api, ingestStream } from "../api";
 interface Report {
   files_indexed: number;
   chunks_indexed: number;
+  chunks_pruned: number;
   skipped: { path: string; reason: string }[];
   errors: { path: string; error: string }[];
 }
 
 export default function Ingest() {
   const [path, setPath] = useState("");
+  const [sync, setSync] = useState(false);
   const [log, setLog] = useState<string[]>([]);
   const [report, setReport] = useState<Report | null>(null);
   const [running, setRunning] = useState(false);
@@ -29,7 +31,8 @@ export default function Ingest() {
             `[${e.stage}] ${e.path ?? ""} ${e.detail ?? ""}`.trim(),
           ]);
       },
-      () => setRunning(false)
+      () => setRunning(false),
+      sync
     );
   }
 
@@ -61,6 +64,10 @@ export default function Ingest() {
             Ingest
           </button>
         </div>
+        <label className="flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={sync} onChange={(e) => setSync(e.target.checked)} />
+          Sync directory (prune chunks for deleted files)
+        </label>
       </div>
 
       <div className="rounded-lg border bg-white p-4 space-y-3">
@@ -91,6 +98,11 @@ export default function Ingest() {
           <p className="font-medium">
             Indexed {report.files_indexed} files / {report.chunks_indexed} chunks
           </p>
+          {report.chunks_pruned > 0 && (
+            <p className="text-slate-600 text-sm mt-1">
+              Pruned {report.chunks_pruned} stale chunk(s)
+            </p>
+          )}
           {report.skipped.length > 0 && (
             <p className="text-amber-600 text-sm mt-1">
               Skipped {report.skipped.length} file(s)

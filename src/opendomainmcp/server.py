@@ -24,12 +24,13 @@ def _context():
 
 
 @mcp.tool()
-def ingest_path(path: str) -> dict:
+def ingest_path(path: str, sync: bool = False) -> dict:
     """Ingest a file or directory: extract domain knowledge and index it.
 
-    Returns counts of indexed files/chunks plus any skipped files or errors.
+    With ``sync=True`` on a directory, chunks for files deleted under it are
+    pruned. Returns counts of indexed/pruned chunks plus any skipped or errors.
     """
-    return _context().pipeline.ingest_path(path).to_dict()
+    return _context().pipeline.ingest_path(path, sync=sync).to_dict()
 
 
 @mcp.tool()

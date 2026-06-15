@@ -36,6 +36,10 @@ class ChromaStore:
     def upsert(self, chunks: list[Chunk]) -> int:
         if not chunks:
             return 0
+        # Identical content (e.g. repeated boilerplate) yields identical ids;
+        # collapse them so a single batch never raises DuplicateIDError.
+        unique = {c.id: c for c in chunks}
+        chunks = list(unique.values())
         embeddings = self._embedder.embed([c.embedding_text() for c in chunks])
         self._collection.upsert(
             ids=[c.id for c in chunks],
@@ -104,6 +108,24 @@ class ChromaStore:
             return False
         self._collection.delete(ids=[item_id])
         return True
+
+    def get_ids_for_source(self, source: str) -> set[str]:
+        """All chunk ids currently stored for a given source file."""
+        res = self._collection.get(where={"source": source}, include=[])
+        return set(res["ids"])
+
+    def delete_ids(self, ids) -> int:
+        ids = list(ids)
+        if ids:
+            self._collection.delete(ids=ids)
+        return len(ids)
+
+    def get_all_sources(self) -> set[str]:
+        """Distinct source paths present in the collection (used by dir sync)."""
+        res = self._collection.get(include=["metadatas"])
+        return {
+            m["source"] for m in res["metadatas"] if m and m.get("source")
+        }
 
     def stats(self) -> dict:
         return {

@@ -14,8 +14,10 @@ def _cmd_ingest(ctx, args) -> int:
             detail = f" - {event['detail']}" if event["detail"] else ""
             print(f"[{event['stage']:>5}] {event['path']}{detail}", file=sys.stderr)
 
-    report = ctx.pipeline.ingest_path(args.path, progress=progress)
+    report = ctx.pipeline.ingest_path(args.path, progress=progress, sync=args.sync)
     print(f"Indexed {report.files_indexed} files / {report.chunks_indexed} chunks.")
+    if report.chunks_pruned:
+        print(f"Pruned {report.chunks_pruned} stale chunk(s).")
     if report.skipped:
         print(f"Skipped {len(report.skipped)} file(s).")
     if report.errors:
@@ -62,6 +64,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_ingest = sub.add_parser("ingest", help="Ingest a file or directory")
     p_ingest.add_argument("path")
+    p_ingest.add_argument(
+        "--sync", action="store_true",
+        help="Remove stored chunks for files deleted under the directory",
+    )
     p_ingest.set_defaults(func=_cmd_ingest)
 
     p_search = sub.add_parser("search", help="Search the knowledge base")

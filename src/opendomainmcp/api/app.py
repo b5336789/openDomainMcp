@@ -79,7 +79,7 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         return {"path": str(stage), "files": names}
 
     @app.get("/api/ingest/stream")
-    async def ingest_stream(path: str, ctx: Context = Depends(get_ctx)):
+    async def ingest_stream(path: str, sync: bool = False, ctx: Context = Depends(get_ctx)):
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
@@ -88,7 +88,9 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
 
         async def run():
             try:
-                report = await asyncio.to_thread(ctx.pipeline.ingest_path, path, progress)
+                report = await asyncio.to_thread(
+                    ctx.pipeline.ingest_path, path, progress, sync
+                )
                 queue.put_nowait({"stage": "report", **report.to_dict()})
             except Exception as exc:  # surface failures to the UI (Fail Loud)
                 queue.put_nowait({"stage": "error", "path": path, "detail": repr(exc)})
