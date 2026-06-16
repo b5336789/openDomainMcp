@@ -36,12 +36,14 @@ class ChromaStore:
         collection_name: str = "domain_knowledge",
         client=None,
         max_retries: int = 0,
+        reranker=None,
     ):
         import chromadb
 
         self._embedder = embedder
         self._collection_name = collection_name
         self._max_retries = max_retries
+        self._reranker = reranker
         if client is not None:
             self._client = client
         else:
@@ -120,20 +122,35 @@ class ChromaStore:
         else:
             ranked = v_ids
 
-        # Resolve documents/metadata for the ranked ids in one fetch.
+        # Resolve documents/metadata for the ranked ids in one fetch, then keep
+        # the fused order while applying the optional source post-filter.
         docs, metas = self._fetch(ranked)
-        results: list[SearchResult] = []
+        candidates = []
         for _id in ranked:
             if _id not in docs:
                 continue
-            meta = metas[_id]
-            if source_contains and source_contains not in (meta.get("source") or ""):
+            if source_contains and source_contains not in (metas[_id].get("source") or ""):
                 continue
+            candidates.append(_id)
+
+        if self._reranker is not None and candidates:
+            scores = self._reranker.rerank(query, [docs[_id] for _id in candidates])
+            order = sorted(range(len(candidates)), key=lambda i: scores[i], reverse=True)
+            return [
+                SearchResult(
+                    id=candidates[i], text=docs[candidates[i]],
+                    score=round(float(scores[i]), 6), metadata=metas[candidates[i]],
+                )
+                for i in order[:top_k]
+            ]
+
+        results: list[SearchResult] = []
+        for _id in candidates:
             if _id in v_dist:
                 score = round(1.0 - v_dist[_id], 6)  # cosine similarity
             else:
                 score = 0.0  # lexical-only hit (no dense distance)
-            results.append(SearchResult(id=_id, text=docs[_id], score=score, metadata=meta))
+            results.append(SearchResult(id=_id, text=docs[_id], score=score, metadata=metas[_id]))
             if len(results) >= top_k:
                 break
         return results

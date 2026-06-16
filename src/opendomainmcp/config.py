@@ -27,6 +27,7 @@ EDITABLE_FIELDS = (
     "code_max_chunk_chars",
     "extract_concurrency",
     "search_mode",
+    "rerank_enabled",
     "answer_model",
 )
 
@@ -66,6 +67,12 @@ class Settings(BaseSettings):
 
     # Retrieval: "vector" (dense only) or "hybrid" (dense + BM25 via RRF)
     search_mode: str = "hybrid"
+
+    # Optional cross-encoder re-ranking of candidates after fusion. Off by
+    # default (the model is downloaded on first use); when on it produces a
+    # unified relevance score for every result, including lexical-only hits.
+    rerank_enabled: bool = False
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
 
     # RAG answer synthesis (Anthropic)
     answer_model: str = "claude-sonnet-4-6"
