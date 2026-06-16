@@ -100,6 +100,40 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         except AnswerError as exc:
             raise HTTPException(status_code=503, detail=str(exc))
 
+    @app.get("/api/ask/stream")
+    async def ask_stream(query: str, top_k: int = 6, ctx: Context = Depends(get_ctx)):
+        from ..query import AnswerError, answer_question_stream
+
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def run():
+            # The model stream is blocking, so iterate it off the event loop and
+            # bridge each event back via the queue.
+            try:
+                for event in answer_question_stream(
+                    query, ctx.store, ctx.settings, top_k=top_k
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, event)
+            except AnswerError as exc:  # surface to the UI (Fail Loud)
+                loop.call_soon_threadsafe(
+                    queue.put_nowait, {"type": "error", "detail": str(exc)}
+                )
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        async def events():
+            task = asyncio.create_task(asyncio.to_thread(run))
+            try:
+                while True:
+                    event = await queue.get()
+                    if event is None:
+                        break
+                    yield {"event": event["type"], "data": json.dumps(event)}
+            finally:
+                await task
+
+        return EventSourceResponse(events())
+
     # -- ingestion ------------------------------------------------------
     @app.post("/api/upload")
     async def upload(files: list[UploadFile] = File(...), ctx: Context = Depends(get_ctx)):

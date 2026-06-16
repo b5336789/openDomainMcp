@@ -72,6 +72,37 @@ def test_upload(client):
     assert (resp["path"]).endswith(resp["path"].split("/")[-1])
 
 
+def test_ask_stream_endpoint(client, monkeypatch):
+    tc, ctx, _ = client
+    from opendomainmcp.models import Chunk
+
+    ctx.store.upsert([
+        Chunk(text="vector database stores embeddings", source="a.md", kind="text"),
+    ])
+
+    import opendomainmcp.query.rag as rag
+
+    def fake_stream(model, system, user, timeout=60.0, max_retries=2):
+        yield "Hello "
+        yield "world [1]."
+
+    monkeypatch.setattr(rag, "_claude_synthesize_stream", fake_stream)
+
+    resp = tc.get("/api/ask/stream", params={"query": "embeddings", "top_k": 1})
+    assert resp.status_code == 200
+
+    deltas, citations = [], None
+    for line in resp.text.splitlines():
+        if line.startswith("data:"):
+            ev = json.loads(line[len("data:"):].strip())
+            if ev["type"] == "delta":
+                deltas.append(ev["text"])
+            elif ev["type"] == "citations":
+                citations = ev["citations"]
+    assert "".join(deltas) == "Hello world [1]."
+    assert citations and citations[0]["source"] == "a.md"
+
+
 def test_upload_streams_to_disk(client):
     tc, _, _ = client
     payload = b"x" * (3 * 1024 * 1024)  # 3 MB, under the default 50 MB limit
