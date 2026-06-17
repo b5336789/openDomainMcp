@@ -61,6 +61,14 @@ class CollectionCreate(BaseModel):
     name: str
 
 
+class SimulateRequest(BaseModel):
+    """Agent Simulator: run a task against one MCP view's tools."""
+
+    view: str
+    query: str
+    top_k: int = 5
+
+
 def create_app(context: Context | None = None, context_factory=build_context) -> FastAPI:
     app = FastAPI(title="openDomainMcp")
     app.state.context = context          # pinned single context (tests / single use)
@@ -296,6 +304,52 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         # Drop cached per-collection contexts so later requests pick up new settings.
         app.state.contexts.clear()
         return JSONResponse({"updated": list(patch.values)})
+
+    # -- MCP views & agent simulator ------------------------------------
+    @app.get("/api/views")
+    def list_views():
+        from ..views import VIEWS
+
+        return {
+            name: {
+                "title": spec.title,
+                "purpose": spec.purpose,
+                "tools": [
+                    {"name": t.name, "description": t.description,
+                     "filters": t.filters, "default_top_k": t.default_top_k}
+                    for t in spec.tools
+                ],
+            }
+            for name, spec in VIEWS.items()
+        }
+
+    @app.post("/api/simulate")
+    def simulate(req: SimulateRequest, ctx: Context = Depends(get_ctx)):
+        from ..views import VIEWS, run_view_tool
+
+        spec = VIEWS.get(req.view)
+        if spec is None:
+            raise HTTPException(status_code=404, detail=f"unknown view {req.view!r}")
+
+        tools_out, all_results, seen = [], [], set()
+        for tool in spec.tools:
+            results = run_view_tool(ctx, tool, req.query, req.top_k)
+            tools_out.append({"tool": tool.name, "results": results})
+            for r in results:
+                if r["id"] not in seen:
+                    seen.add(r["id"])
+                    all_results.append(r)
+
+        scores = [r["score"] for r in all_results]
+        types = sorted({
+            r["metadata"].get("knowledge_type", "") for r in all_results
+        } - {""})
+        grounding = {
+            "hits": len(all_results),
+            "avg_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
+            "knowledge_types": types,
+        }
+        return {"view": req.view, "tools": tools_out, "grounding": grounding}
 
     # -- collections (knowledge bases) ----------------------------------
     @app.get("/api/collections")

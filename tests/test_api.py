@@ -206,6 +206,33 @@ def test_search_approved_only_policy(store, pipeline, tmp_path):
     )
 
 
+def test_views_endpoint_lists_all_views(client):
+    tc, _, _ = client
+    data = tc.get("/api/views").json()
+    assert set(data) == {"product", "operations", "developer", "support", "architecture"}
+    product_tools = {t["name"] for t in data["product"]["tools"]}
+    assert "get_feature" in product_tools
+
+
+def test_simulate_endpoint_returns_grounding(client):
+    tc, ctx, _ = client
+    from opendomainmcp.models import Chunk, KnowledgeUnit
+
+    ctx.store.upsert([
+        Chunk(text="users can export reports to PDF", source="a.md", kind="text",
+              knowledge=KnowledgeUnit(summary="export", knowledge_type="Feature",
+                                      audience=["product_manager"])),
+    ])
+    data = tc.post("/api/simulate", json={
+        "view": "product", "query": "export reports", "top_k": 3,
+    }).json()
+    assert data["view"] == "product"
+    assert any(t["results"] for t in data["tools"])
+    assert data["grounding"]["hits"] >= 1
+    assert "Feature" in data["grounding"]["knowledge_types"]
+    assert tc.post("/api/simulate", json={"view": "nope", "query": "x"}).status_code == 404
+
+
 def test_settings_roundtrip_and_validation(client):
     tc, _, _ = client
     assert tc.get("/api/settings").json()["editable"]["chunk_size"] == 1200

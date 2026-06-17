@@ -155,3 +155,24 @@ export const IconSparkle = (p: IconProps) => (
     <circle cx="12" cy="12" r="3" />
   </Base>
 );
+
+export const IconReview = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M9 11l3 3L22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+  </Base>
+);
+
+export const IconBuilder = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M12 2 2 7l10 5 10-5-10-5z" />
+    <path d="m2 17 10 5 10-5" />
+    <path d="m2 12 10 5 10-5" />
+  </Base>
+);
+
+export const IconSimulator = (p: IconProps) => (
+  <Base {...p}>
+    <path d="M5 3v18l15-9z" />
+  </Base>
+);

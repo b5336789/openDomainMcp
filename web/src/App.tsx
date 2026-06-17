@@ -14,6 +14,7 @@ import {
 import {
   IconAsk,
   IconBrowse,
+  IconBuilder,
   IconClose,
   IconDashboard,
   IconDatabase,
@@ -22,7 +23,9 @@ import {
   IconMenu,
   IconMoon,
   IconPlus,
+  IconReview,
   IconSettings,
+  IconSimulator,
   IconSun,
 } from "./components/icons";
 
@@ -32,6 +35,9 @@ const links = [
   { to: "/explore", label: "Explore", icon: IconExplore },
   { to: "/ask", label: "Ask", icon: IconAsk },
   { to: "/browse", label: "Browse / Edit", icon: IconBrowse },
+  { to: "/review", label: "Review", icon: IconReview },
+  { to: "/mcp", label: "MCP Builder", icon: IconBuilder },
+  { to: "/simulator", label: "Simulator", icon: IconSimulator },
   { to: "/settings", label: "Settings", icon: IconSettings },
 ];
 
