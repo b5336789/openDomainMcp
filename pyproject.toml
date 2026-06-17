@@ -27,6 +27,7 @@ dependencies = [
     "tree-sitter-bash>=0.23",
     "pypdf>=4.0",
     "python-docx>=1.1",
+    "pyyaml>=6.0",
     "rank-bm25>=0.2",
     "anthropic>=0.39",
     "mcp>=1.0",
@@ -45,6 +46,8 @@ dev = [
 [project.scripts]
 opendomainmcp = "opendomainmcp.cli:main"
 opendomainmcp-server = "opendomainmcp.server:main"
+# Role-specific MCP view, e.g. `opendomainmcp-view --view product`.
+opendomainmcp-view = "opendomainmcp.server:main"
 opendomainmcp-web = "opendomainmcp.api.app:main"
 
 [tool.setuptools.packages.find]

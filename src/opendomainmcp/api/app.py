@@ -42,12 +42,31 @@ class ItemPatch(BaseModel):
     metadata: dict
 
 
+class ItemCreate(BaseModel):
+    """Manually authored knowledge added through the review UI."""
+
+    text: str
+    source: str = "manual"
+    knowledge_type: str = ""
+    audience: list[str] = []
+    tags: list[str] = []
+    summary: str = ""
+
+
 class SettingsPatch(BaseModel):
     values: dict
 
 
 class CollectionCreate(BaseModel):
     name: str
+
+
+class SimulateRequest(BaseModel):
+    """Agent Simulator: run a task against one MCP view's tools."""
+
+    view: str
+    query: str
+    top_k: int = 5
 
 
 def create_app(context: Context | None = None, context_factory=build_context) -> FastAPI:
@@ -84,7 +103,10 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
     def search(req: SearchRequest, ctx: Context = Depends(get_ctx)):
         from ..store import build_where
 
-        where = build_where({"kind": req.kind, "language": req.language, "symbol": req.symbol})
+        filters = {"kind": req.kind, "language": req.language, "symbol": req.symbol}
+        if ctx.settings.retrieve_approved_only:
+            filters["review_status"] = "approved"
+        where = build_where(filters)
         results = ctx.store.search(
             req.query, top_k=req.top_k, where=where,
             mode=ctx.settings.search_mode, source_contains=req.source_contains,
@@ -100,20 +122,77 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         except AnswerError as exc:
             raise HTTPException(status_code=503, detail=str(exc))
 
+    @app.get("/api/ask/stream")
+    async def ask_stream(query: str, top_k: int = 6, ctx: Context = Depends(get_ctx)):
+        from ..query import AnswerError, answer_question_stream
+
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def run():
+            # The model stream is blocking, so iterate it off the event loop and
+            # bridge each event back via the queue.
+            try:
+                for event in answer_question_stream(
+                    query, ctx.store, ctx.settings, top_k=top_k
+                ):
+                    loop.call_soon_threadsafe(queue.put_nowait, event)
+            except AnswerError as exc:  # surface to the UI (Fail Loud)
+                loop.call_soon_threadsafe(
+                    queue.put_nowait, {"type": "error", "detail": str(exc)}
+                )
+            loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        async def events():
+            task = asyncio.create_task(asyncio.to_thread(run))
+            try:
+                while True:
+                    event = await queue.get()
+                    if event is None:
+                        break
+                    yield {"event": event["type"], "data": json.dumps(event)}
+            finally:
+                await task
+
+        return EventSourceResponse(events())
+
     # -- ingestion ------------------------------------------------------
     @app.post("/api/upload")
     async def upload(files: list[UploadFile] = File(...), ctx: Context = Depends(get_ctx)):
         stage = ctx.settings.data_dir / "uploads" / uuid.uuid4().hex
         stage.mkdir(parents=True, exist_ok=True)
+        limit = ctx.settings.max_upload_mb * 1024 * 1024
         names = []
         for f in files:
             dest = stage / Path(f.filename or "upload").name
-            dest.write_bytes(await f.read())
+            # Stream to disk in chunks so a huge upload never lands in memory,
+            # and abort once it exceeds the configured limit (Fail Loud).
+            written = 0
+            with dest.open("wb") as out:
+                while chunk := await f.read(1024 * 1024):
+                    written += len(chunk)
+                    if written > limit:
+                        out.close()
+                        dest.unlink(missing_ok=True)
+                        raise HTTPException(
+                            status_code=413,
+                            detail=f"{dest.name} exceeds the {ctx.settings.max_upload_mb} MB upload limit",
+                        )
+                    out.write(chunk)
             names.append(dest.name)
         return {"path": str(stage), "files": names}
 
     @app.get("/api/ingest/stream")
     async def ingest_stream(path: str, sync: bool = False, ctx: Context = Depends(get_ctx)):
+        # Reject paths that escape the configured ingest root before streaming.
+        if ctx.settings.ingest_root is not None:
+            from ..ingest.pipeline import PathNotAllowedError, _resolve_within
+
+            try:
+                _resolve_within(Path(path), ctx.settings.ingest_root)
+            except PathNotAllowedError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+
         queue: asyncio.Queue = asyncio.Queue()
         loop = asyncio.get_running_loop()
 
@@ -143,12 +222,49 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
 
         return EventSourceResponse(events())
 
-    # -- browse & edit --------------------------------------------------
+    # -- browse, edit & review -----------------------------------------
     @app.get("/api/items")
     def list_items(limit: int = 50, offset: int = 0, kind: str | None = None,
+                   review_status: str | None = None,
+                   knowledge_type: str | None = None,
                    ctx: Context = Depends(get_ctx)):
-        where = {"kind": kind} if kind else None
+        from ..store import build_where
+
+        where = build_where({
+            "kind": kind, "review_status": review_status,
+            "knowledge_type": knowledge_type,
+        })
         return ctx.store.get_items(limit=limit, offset=offset, where=where)
+
+    @app.post("/api/items")
+    def create_item(body: ItemCreate, ctx: Context = Depends(get_ctx)):
+        from ..models import Chunk, KnowledgeUnit
+
+        # Manually authored knowledge is trusted, so it is born approved.
+        knowledge = KnowledgeUnit(
+            summary=body.summary or body.text[:160],
+            knowledge_type=body.knowledge_type,
+            audience=body.audience,
+            tags=body.tags,
+            confidence=1.0,
+            review_status="approved",
+        )
+        chunk = Chunk(text=body.text, source=body.source, kind="text",
+                      knowledge=knowledge)
+        ctx.store.upsert([chunk])
+        return ctx.store.get_item(chunk.id)
+
+    @app.post("/api/items/{item_id}/approve")
+    def approve_item(item_id: str, ctx: Context = Depends(get_ctx)):
+        if not ctx.store.update_metadata(item_id, {"review_status": "approved"}):
+            raise HTTPException(status_code=404, detail="item not found")
+        return ctx.store.get_item(item_id)
+
+    @app.post("/api/items/{item_id}/reject")
+    def reject_item(item_id: str, ctx: Context = Depends(get_ctx)):
+        if not ctx.store.update_metadata(item_id, {"review_status": "rejected"}):
+            raise HTTPException(status_code=404, detail="item not found")
+        return ctx.store.get_item(item_id)
 
     @app.get("/api/items/{item_id}")
     def get_item(item_id: str, ctx: Context = Depends(get_ctx)):
@@ -188,6 +304,52 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         # Drop cached per-collection contexts so later requests pick up new settings.
         app.state.contexts.clear()
         return JSONResponse({"updated": list(patch.values)})
+
+    # -- MCP views & agent simulator ------------------------------------
+    @app.get("/api/views")
+    def list_views():
+        from ..views import VIEWS
+
+        return {
+            name: {
+                "title": spec.title,
+                "purpose": spec.purpose,
+                "tools": [
+                    {"name": t.name, "description": t.description,
+                     "filters": t.filters, "default_top_k": t.default_top_k}
+                    for t in spec.tools
+                ],
+            }
+            for name, spec in VIEWS.items()
+        }
+
+    @app.post("/api/simulate")
+    def simulate(req: SimulateRequest, ctx: Context = Depends(get_ctx)):
+        from ..views import VIEWS, run_view_tool
+
+        spec = VIEWS.get(req.view)
+        if spec is None:
+            raise HTTPException(status_code=404, detail=f"unknown view {req.view!r}")
+
+        tools_out, all_results, seen = [], [], set()
+        for tool in spec.tools:
+            results = run_view_tool(ctx, tool, req.query, req.top_k)
+            tools_out.append({"tool": tool.name, "results": results})
+            for r in results:
+                if r["id"] not in seen:
+                    seen.add(r["id"])
+                    all_results.append(r)
+
+        scores = [r["score"] for r in all_results]
+        types = sorted({
+            r["metadata"].get("knowledge_type", "") for r in all_results
+        } - {""})
+        grounding = {
+            "hits": len(all_results),
+            "avg_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
+            "knowledge_types": types,
+        }
+        return {"view": req.view, "tools": tools_out, "grounding": grounding}
 
     # -- collections (knowledge bases) ----------------------------------
     @app.get("/api/collections")
