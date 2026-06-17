@@ -45,6 +45,8 @@ dev = [
 [project.scripts]
 opendomainmcp = "opendomainmcp.cli:main"
 opendomainmcp-server = "opendomainmcp.server:main"
+# Role-specific MCP view, e.g. `opendomainmcp-view --view product`.
+opendomainmcp-view = "opendomainmcp.server:main"
 opendomainmcp-web = "opendomainmcp.api.app:main"
 
 [tool.setuptools.packages.find]

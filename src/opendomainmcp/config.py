@@ -29,6 +29,8 @@ EDITABLE_FIELDS = (
     "search_mode",
     "rerank_enabled",
     "answer_model",
+    "review_mode",
+    "retrieve_approved_only",
 )
 
 
@@ -76,6 +78,13 @@ class Settings(BaseSettings):
 
     # RAG answer synthesis (Anthropic)
     answer_model: str = "claude-sonnet-4-6"
+
+    # Knowledge review workflow. When ``review_mode`` is on, newly extracted
+    # knowledge is marked "pending" so it must be approved before it counts as
+    # reviewed. When ``retrieve_approved_only`` is on, search/MCP views return
+    # only approved knowledge. Both default off so existing behaviour is intact.
+    review_mode: bool = False
+    retrieve_approved_only: bool = False
 
     # Resilience for external API calls (Anthropic): per-request timeout in
     # seconds and the number of automatic retries on transient errors.
