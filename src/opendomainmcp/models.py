@@ -23,6 +23,17 @@ AUDIENCES = (
     "product_manager", "solutions_architect", "operations", "engineering", "support",
 )
 
+# Entity/relation vocabularies for the knowledge graph (single source of truth
+# shared by the extractor prompt and the graph builder). Keep in sync.
+ENTITY_TYPES = (
+    "Component", "Service", "Function", "Class", "API",
+    "Concept", "Person/Team", "Resource",
+)
+
+RELATION_TYPES = (
+    "depends_on", "calls", "owns", "part_of", "uses", "related_to",
+)
+
 
 @dataclass
 class KnowledgeUnit:
@@ -47,6 +58,11 @@ class KnowledgeUnit:
     # Review workflow state. New extractions default to "approved" so existing
     # behaviour is unchanged; an opt-in review mode (see Settings) sets "pending".
     review_status: str = "approved"
+    # Structured graph material extracted alongside the free-form concepts/
+    # relations. Each entity is {"name", "type"}; each relation is
+    # {"src", "dst", "type"}. Default empty so older indexes stay valid.
+    entities: list[dict] = field(default_factory=list)
+    typed_relations: list[dict] = field(default_factory=list)
 
     def is_empty(self) -> bool:
         return not (

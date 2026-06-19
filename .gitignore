@@ -30,3 +30,7 @@ src/opendomainmcp/api/static/
 
 # Claude Code agent worktrees / local state
 .claude/
+.gstack/
+
+# Subagent-driven-development scratch (briefs, reports, diffs, ledger)
+.superpowers/
