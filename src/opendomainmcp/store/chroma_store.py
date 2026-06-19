@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 # several audiences), so it is post-filtered in the view layer instead.
 _FILTER_FIELDS = ("kind", "language", "symbol", "node_type", "knowledge_type", "review_status")
 
+# Valid review states; back-filling to anything else is rejected (Fail Loud).
+VALID_REVIEW_STATUSES = ("approved", "pending", "rejected")
+
 
 def build_where(filters: Optional[dict]) -> Optional[dict]:
     """Translate simple equality filters into a Chroma ``where`` clause."""
@@ -204,6 +207,40 @@ class ChromaStore:
             return False
         self._collection.update(ids=[item_id], metadatas=[metadata])
         return True
+
+    def backfill_review_status(self, status: str = "approved", *, only_missing: bool = True) -> int:
+        """Stamp ``review_status`` onto stored chunks, returning the count updated.
+
+        With ``only_missing=True`` (default) only chunks whose ``review_status``
+        metadata is absent or empty are touched -- this back-fills data ingested
+        before the review feature existed. With ``only_missing=False`` every
+        chunk is re-stamped. Fail Loud on an invalid ``status``.
+        """
+        if status not in VALID_REVIEW_STATUSES:
+            raise ValueError(
+                f"invalid review status {status!r}; expected one of {VALID_REVIEW_STATUSES}"
+            )
+
+        res = self._collection.get(include=["metadatas"])
+        ids = res["ids"]
+        metas = res["metadatas"]
+
+        update_ids: list[str] = []
+        update_metas: list[dict] = []
+        for _id, meta in zip(ids, metas):
+            meta = meta or {}
+            if only_missing and meta.get("review_status"):
+                continue
+            update_ids.append(_id)
+            # Immutable update: build a new metadata dict rather than mutating.
+            update_metas.append({**meta, "review_status": status})
+
+        if update_ids:
+            self._retry(
+                "update",
+                lambda: self._collection.update(ids=update_ids, metadatas=update_metas),
+            )
+        return len(update_ids)
 
     def delete_item(self, item_id: str) -> bool:
         if self.get_item(item_id) is None:
