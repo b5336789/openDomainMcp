@@ -5,8 +5,10 @@ append-only JSONL file under the data directory (one JSON object per line) and
 can read them back into simple aggregates. An in-memory mode (``data_dir=None``)
 keeps everything in a list so tests run without touching the filesystem.
 
-This module is intentionally standalone: it is not wired into the API or the
-pipeline yet (see later tasks). It only depends on the standard library.
+This module is intentionally standalone (standard library only). The recorder
+and ``record_retrieval`` are wired into the web API's ``/api/search``,
+``/api/ask`` and ``/api/simulate`` handlers, and the aggregates are served by
+``/api/metrics`` (see ``api/insight_routes.py``).
 """
 
 from __future__ import annotations
