@@ -1,0 +1,36 @@
+from opendomainmcp.models import KnowledgeUnit
+from opendomainmcp.graph.normalize import normalize_name
+from opendomainmcp.graph.builder import build_graph
+
+
+def test_normalize_name_lowercases_and_collapses_whitespace():
+    assert normalize_name("  Auth   Service ") == "auth service"
+
+
+def test_build_graph_produces_entities_and_edges():
+    k = KnowledgeUnit(
+        entities=[{"name": "Auth Service", "type": "Service"}],
+        typed_relations=[{"src": "Auth Service", "dst": "User DB", "type": "depends_on"}],
+    )
+    entities, edges = build_graph(k, chunk_id="c1")
+    by_norm = {e.normalized_name: e for e in entities}
+    # declared entity keeps its type; relation endpoint not declared -> Concept
+    assert by_norm["auth service"].type == "Service"
+    assert by_norm["auth service"].display_name == "Auth Service"
+    assert by_norm["user db"].type == "Concept"
+    assert len(edges) == 1
+    assert (edges[0].src, edges[0].dst, edges[0].relation_type) == (
+        "auth service", "user db", "depends_on")
+    assert edges[0].chunk_id == "c1"
+
+
+def test_build_graph_dedupes_entities_by_normalized_name():
+    k = KnowledgeUnit(entities=[{"name": "Auth Service", "type": "Service"},
+                                {"name": "auth service", "type": "Concept"}])
+    entities, _ = build_graph(k, chunk_id="c1")
+    assert len([e for e in entities if e.normalized_name == "auth service"]) == 1
+
+
+def test_build_graph_empty_knowledge_yields_nothing():
+    entities, edges = build_graph(KnowledgeUnit(), chunk_id="c1")
+    assert entities == [] and edges == []
