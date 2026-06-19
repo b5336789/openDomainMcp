@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION }}
@@ -19,8 +18,10 @@ env:
   ECS_CONTAINER_NAME: ${{ vars.ECS_CONTAINER_NAME }}
 
 jobs:
-  test-build-deploy:
+  validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Check out source
@@ -49,6 +50,18 @@ jobs:
         run: |
           npm ci
           npm run build
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
