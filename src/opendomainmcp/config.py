@@ -98,6 +98,13 @@ class Settings(BaseSettings):
     request_timeout: float = 60.0
     max_retries: int = 2
 
+    # Multi-tenancy: when on, every request must carry a tenant id (``X-Tenant``
+    # header) and each tenant's data is isolated by namespacing the collection as
+    # ``<tenant>::<collection>``. Off by default — single-tenant local use is
+    # unchanged. Data isolation rides on the existing per-collection separation in
+    # both the vector store (Chroma) and the graph store (keyed by collection).
+    multi_tenant: bool = False
+
     # --- Knowledge graph store (MariaDB, required platform-wide) ---
     graph_db_host: str = "localhost"
     graph_db_port: int = 3306
