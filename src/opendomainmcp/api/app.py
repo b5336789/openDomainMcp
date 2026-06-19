@@ -370,6 +370,20 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         app.state.contexts.pop(name, None)
         return {"deleted": name}
 
+    # -- graph query (pure read, no LLM) --------------------------------
+    @app.get("/api/graph/entity/{name}")
+    def graph_entity(name: str, ctx: Context = Depends(get_ctx)):
+        result = ctx.graph.neighbors(name)
+        if result["entity"] is None:
+            return JSONResponse(status_code=404,
+                                content={"error": f"entity not found: {name}"})
+        return result
+
+    @app.get("/api/graph/entities")
+    def graph_entities(type: str | None = None, q: str | None = None, limit: int = 50,
+                       ctx: Context = Depends(get_ctx)):
+        return {"items": ctx.graph.list_entities(type=type, q=q, limit=limit)}
+
     # -- static SPA (built frontend), if present ------------------------
     if STATIC_DIR.exists():
         app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

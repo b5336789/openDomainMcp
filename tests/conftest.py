@@ -181,6 +181,16 @@ class FakeGraphStore:
             frontier = nxt
         return {"entity": root, "neighbors": collected}
 
+    def list_entities(self, type=None, q=None, limit=50):
+        rows = []
+        for norm, row in sorted(self.entities.items()):
+            if type and row["type"] != type:
+                continue
+            if q and q.lower().strip() not in norm:
+                continue
+            rows.append({"name": row["name"], "normalized_name": norm, "type": row["type"]})
+        return rows[:max(1, min(500, limit))]
+
 
 @pytest.fixture
 def fake_graph():

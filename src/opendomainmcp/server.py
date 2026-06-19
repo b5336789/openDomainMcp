@@ -93,6 +93,20 @@ def list_collections() -> list[dict]:
     return _context().store.list_collections()
 
 
+# -- graph query tools (pure reads over the graph store; no LLM) -------------
+def graph_tool_handlers(ctx):
+    """Return name -> callable for the graph MCP tools. Pure reads over the
+    graph store; no retrieval / LLM."""
+
+    def get_entity(name: str):
+        return ctx.graph.neighbors(name)
+
+    def list_related_entities(name: str, relation_type: str | None = None, depth: int = 1):
+        return ctx.graph.neighbors(name, relation_type=relation_type, depth=depth)
+
+    return {"get_entity": get_entity, "list_related_entities": list_related_entities}
+
+
 # -- role-specific views ------------------------------------------------------
 def build_view_server(view_name: str) -> FastMCP:
     """Build an MCP server exposing one view's typed tools.
@@ -113,6 +127,25 @@ def build_view_server(view_name: str) -> FastMCP:
 
     for tool in spec.tools:
         server.add_tool(_make(tool), name=tool.name, description=tool.description)
+
+    # Register graph query tools on Developer and Architecture views.
+    if view_name in ("developer", "architecture"):
+        def _get_entity(name: str, collection: Optional[str] = None) -> dict:
+            """Fetch an entity and its direct neighbors from the knowledge graph."""
+            return graph_tool_handlers(_context(collection))["get_entity"](name=name)
+
+        def _list_related_entities(name: str, relation_type: Optional[str] = None,
+                                   depth: int = 1,
+                                   collection: Optional[str] = None) -> dict:
+            """List entities related to a given entity (depth clamped to 1–2)."""
+            return graph_tool_handlers(_context(collection))["list_related_entities"](
+                name=name, relation_type=relation_type, depth=depth)
+
+        server.add_tool(_get_entity, name="get_entity",
+                        description="Fetch an entity and its direct neighbors from the knowledge graph.")
+        server.add_tool(_list_related_entities, name="list_related_entities",
+                        description="List entities related to a given entity (depth clamped to 1–2).")
+
     return server
 
 

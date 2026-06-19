@@ -17,6 +17,8 @@ class GraphStoreProtocol(Protocol):
     def get_entity(self, name: str) -> Optional[dict]: ...
     def neighbors(self, name: str, relation_type: Optional[str] = None,
                   depth: int = 1) -> dict: ...
+    def list_entities(self, type: Optional[str] = None, q: Optional[str] = None,
+                      limit: int = 50) -> list[dict]: ...
 
 
 class NullGraphStore:
@@ -31,6 +33,9 @@ class NullGraphStore:
     def neighbors(self, name: str, relation_type: Optional[str] = None,
                   depth: int = 1) -> dict:
         return {"entity": None, "neighbors": []}
+
+    def list_entities(self, type=None, q=None, limit=50):
+        return []
 
 
 _SCHEMA = (
@@ -179,3 +184,18 @@ class MariaGraphStore:
                                                   "direction": direction})
                 frontier = next_frontier
         return {"entity": root, "neighbors": collected}
+
+    def list_entities(self, type=None, q=None, limit=50):
+        clauses, params = [], []
+        if type:
+            clauses.append("type=%s"); params.append(type)
+        if q:
+            clauses.append("normalized_name LIKE %s")
+            params.append(f"%{q.lower().strip()}%")
+        where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(max(1, min(500, limit)))
+        with self._connect() as conn, conn.cursor() as cur:
+            cur.execute("SELECT normalized_name, display_name, type FROM entities"
+                        f"{where} ORDER BY normalized_name LIMIT %s", params)
+            return [{"name": r["display_name"], "normalized_name": r["normalized_name"],
+                     "type": r["type"]} for r in cur.fetchall()]
