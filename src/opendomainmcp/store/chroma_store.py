@@ -261,6 +261,51 @@ class ChromaStore:
             self._lexical_dirty = True
         return len(ids)
 
+    def list_sources(self) -> list[dict]:
+        """Aggregate stored chunks by their ``source`` for the source registry.
+
+        Returns one dict per source with the chunk count, the sorted set of
+        distinct ``kind`` values, and a review-status breakdown. Chunks with no
+        ``source`` metadata are grouped under an empty-string key, and an absent
+        or unrecognised ``review_status`` counts as ``unset``.
+        """
+        res = self._collection.get(include=["metadatas"])
+        agg: dict[str, dict] = {}
+        for meta in res["metadatas"]:
+            meta = meta or {}
+            source = meta.get("source") or ""
+            entry = agg.get(source)
+            if entry is None:
+                entry = {
+                    "source": source,
+                    "chunks": 0,
+                    "kinds": set(),
+                    "review": {"approved": 0, "pending": 0, "rejected": 0, "unset": 0},
+                }
+                agg[source] = entry
+            entry["chunks"] += 1
+            kind = meta.get("kind")
+            if kind:
+                entry["kinds"].add(kind)
+            status = meta.get("review_status")
+            bucket = status if status in VALID_REVIEW_STATUSES else "unset"
+            entry["review"][bucket] += 1
+        return [
+            {**entry, "kinds": sorted(entry["kinds"])}
+            for entry in sorted(agg.values(), key=lambda e: e["source"])
+        ]
+
+    def delete_by_source(self, source: str) -> int:
+        """Delete every chunk whose ``source`` equals ``source``.
+
+        Returns the number of chunks removed. Fail Loud on an empty source so a
+        caller cannot accidentally target the unsourced bucket.
+        """
+        if not source:
+            raise ValueError("source must be a non-empty string")
+        ids = self.get_ids_for_source(source)
+        return self.delete_ids(ids)
+
     def get_all_sources(self) -> set[str]:
         """Distinct source paths present in the collection (used by dir sync)."""
         res = self._collection.get(include=["metadatas"])
