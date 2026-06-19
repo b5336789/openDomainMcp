@@ -15,6 +15,8 @@ def test_parse_extracts_typed_entities_and_relations():
                           {"name": "User DB", "type": "Resource"}]
     assert k.typed_relations == [
         {"src": "Auth Service", "dst": "User DB", "type": "depends_on"}]
+    assert k.concepts == ["a"]
+    assert k.relations == ["A -> B"]
 
 
 def test_parse_clamps_unknown_types_to_fallback():
