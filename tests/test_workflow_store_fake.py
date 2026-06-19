@@ -30,3 +30,13 @@ def test_list_workflows(fake_graph):
     names = {w["name"] for w in fake_graph.list_workflows()}
     assert names == {"Deploy", "Rollback"}
     assert [w["name"] for w in fake_graph.list_workflows(q="roll")] == ["Rollback"]
+
+
+def test_get_workflow_precondition_defaults_to_empty_string(fake_graph):
+    """Verify precondition coalesces None to '' to match MariaGraphStore behavior."""
+    # Create a step with no precondition (defaults to None in WorkflowStep)
+    fake_graph.upsert_workflow("NoPrereq", "c1", 0, _steps((1, "x")), [])
+    wf = fake_graph.get_workflow("NoPrereq")
+    assert wf is not None
+    assert len(wf["steps"]) == 1
+    assert wf["steps"][0]["precondition"] == ""

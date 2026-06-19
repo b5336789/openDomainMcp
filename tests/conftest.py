@@ -244,7 +244,7 @@ class FakeGraphStore:
             return None
         display = rows[0]["workflow_name"] if rows else name
         steps = [{"order": r["step_order"], "text": r["text"],
-                  "precondition": r["precondition"], "chunk_id": r["chunk_id"]}
+                  "precondition": r["precondition"] or "", "chunk_id": r["chunk_id"]}
                  for r in rows]
         return {"workflow_name": display, "prerequisites": prereqs, "steps": steps}
 
@@ -254,7 +254,7 @@ class FakeGraphStore:
         for r in slot["workflow_steps"]:
             if q and q.lower().strip() not in r["workflow_key"]:
                 continue
-            names[r["workflow_key"]] = r["workflow_name"]
+            names[r["workflow_key"]] = max(names.get(r["workflow_key"], r["workflow_name"]), r["workflow_name"])
         out = [{"name": n} for _, n in sorted(names.items())]
         return out[:max(1, min(500, limit))]
 
