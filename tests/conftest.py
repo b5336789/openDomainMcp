@@ -122,7 +122,15 @@ class FakeGraphStore:
             self.entity_chunks.setdefault(e.normalized_name, set()).add(e.chunk_id)
 
     def upsert_edges(self, edges):
-        self.edges.extend(edges)
+        # Dedupe by (src, dst, relation_type, chunk_id), keeping max confidence —
+        # mirrors MariaDB's ON DUPLICATE KEY UPDATE confidence=GREATEST(...).
+        index = {(e.src, e.dst, e.relation_type, e.chunk_id): e for e in self.edges}
+        for e in edges:
+            key = (e.src, e.dst, e.relation_type, e.chunk_id)
+            existing = index.get(key)
+            if existing is None or e.confidence > existing.confidence:
+                index[key] = e
+        self.edges = list(index.values())
 
     def delete_for_chunks(self, chunk_ids):
         ids = set(chunk_ids)

@@ -27,3 +27,15 @@ def test_fake_graph_delete_for_chunks_removes_nodes_and_edges(fake_graph):
 
 def test_fake_graph_get_missing_entity_returns_none(fake_graph):
     assert fake_graph.get_entity("nope") is None
+
+
+def test_fake_graph_dedupes_repeated_edge(fake_graph):
+    fake_graph.upsert_entities([
+        Entity("a", "A", "Concept", "c1"),
+        Entity("b", "B", "Concept", "c1"),
+    ])
+    edge = Edge("a", "b", "uses", "c1")
+    fake_graph.upsert_edges([edge])
+    fake_graph.upsert_edges([edge])
+    result = fake_graph.neighbors("a")
+    assert len(result["neighbors"]) == 1

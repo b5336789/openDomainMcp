@@ -22,10 +22,10 @@ class GraphStoreProtocol(Protocol):
 class NullGraphStore:
     """No-op store (graph disabled / direct Pipeline construction in tests)."""
 
-    def ensure_schema(self) -> None: ...
-    def upsert_entities(self, entities: list[Entity]) -> None: ...
-    def upsert_edges(self, edges: list[Edge]) -> None: ...
-    def delete_for_chunks(self, chunk_ids: Iterable[str]) -> None: ...
+    def ensure_schema(self) -> None: pass
+    def upsert_entities(self, entities: list[Entity]) -> None: pass
+    def upsert_edges(self, edges: list[Edge]) -> None: pass
+    def delete_for_chunks(self, chunk_ids: Iterable[str]) -> None: pass
     def get_entity(self, name: str) -> Optional[dict]:
         return None
     def neighbors(self, name: str, relation_type: Optional[str] = None,
@@ -124,32 +124,38 @@ class MariaGraphStore:
                 "DELETE FROM entities WHERE normalized_name NOT IN "
                 "(SELECT normalized_name FROM entity_chunks)")
 
+    def _get_entity_with_cur(self, cur, normalized_name: str) -> Optional[dict]:
+        """Fetch an entity using an already-open cursor (no new connection)."""
+        cur.execute("SELECT normalized_name, display_name, type, confidence "
+                    "FROM entities WHERE normalized_name=%s", (normalized_name,))
+        row = cur.fetchone()
+        if not row:
+            return None
+        cur.execute("SELECT chunk_id FROM entity_chunks WHERE normalized_name=%s",
+                    (normalized_name,))
+        chunk_ids = [r["chunk_id"] for r in cur.fetchall()]
+        return {"name": row["display_name"], "normalized_name": row["normalized_name"],
+                "type": row["type"], "confidence": row["confidence"],
+                "aliases": [], "chunk_ids": chunk_ids}
+
     def get_entity(self, name: str) -> Optional[dict]:
         from .normalize import normalize_name
         norm = normalize_name(name)
         with self._connect() as conn, conn.cursor() as cur:
-            cur.execute("SELECT normalized_name, display_name, type, confidence "
-                        "FROM entities WHERE normalized_name=%s", (norm,))
-            row = cur.fetchone()
-            if not row:
-                return None
-            cur.execute("SELECT chunk_id FROM entity_chunks WHERE normalized_name=%s", (norm,))
-            chunk_ids = [r["chunk_id"] for r in cur.fetchall()]
-        return {"name": row["display_name"], "normalized_name": row["normalized_name"],
-                "type": row["type"], "confidence": row["confidence"],
-                "aliases": [], "chunk_ids": chunk_ids}
+            return self._get_entity_with_cur(cur, norm)
 
     def neighbors(self, name: str, relation_type: Optional[str] = None,
                   depth: int = 1) -> dict:
         from .normalize import normalize_name
         depth = max(1, min(2, depth))  # clamp per Global Constraints
-        root = self.get_entity(name)
-        if root is None:
-            return {"entity": None, "neighbors": []}
-        seen = {root["normalized_name"]}
-        frontier = [root["normalized_name"]]
+        norm_root = normalize_name(name)
         collected: list[dict] = []
         with self._connect() as conn, conn.cursor() as cur:
+            root = self._get_entity_with_cur(cur, norm_root)
+            if root is None:
+                return {"entity": None, "neighbors": []}
+            seen = {root["normalized_name"]}
+            frontier = [root["normalized_name"]]
             for _ in range(depth):
                 next_frontier = []
                 for norm in frontier:
@@ -166,7 +172,7 @@ class MariaGraphStore:
                                 continue
                             seen.add(r["other"])
                             next_frontier.append(r["other"])
-                            ent = self.get_entity(r["other"])
+                            ent = self._get_entity_with_cur(cur, r["other"])
                             if ent:
                                 collected.append({"entity": ent,
                                                   "relation_type": r["relation_type"],
