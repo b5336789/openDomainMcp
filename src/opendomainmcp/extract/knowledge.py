@@ -15,7 +15,13 @@ import json
 import logging
 
 from ..config import Settings
-from ..models import AUDIENCES, KNOWLEDGE_TYPES, KnowledgeUnit
+from ..models import (
+    AUDIENCES,
+    ENTITY_TYPES,
+    KNOWLEDGE_TYPES,
+    RELATION_TYPES,
+    KnowledgeUnit,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +41,12 @@ _SYSTEM = (
     '  "tags": a list of 0-6 short free-form tags (may be empty),\n'
     '  "permissions": a list of permissions/roles required, if any (may be empty),\n'
     '  "references": a list of external identifiers it cites such as URLs, ticket '
-    "or error codes (may be empty).\n"
+    "or error codes (may be empty),\n"
+    '  "entities": a list of {"name", "type"} for the key entities, each type one of '
+    + ", ".join(ENTITY_TYPES) + " (may be empty),\n"
+    '  "typed_relations": a list of {"src", "dst", "type"} directed relations '
+    "between entity names, each type one of "
+    + ", ".join(RELATION_TYPES) + " (may be empty).\n"
     "Do not include any prose outside the JSON object."
 )
 
@@ -52,6 +63,42 @@ def _norm_choice(value, allowed: tuple[str, ...]) -> str:
     text = str(value).strip()
     lower = {a.lower(): a for a in allowed}
     return lower.get(text.lower(), "")
+
+
+def _norm_choice_default(value, allowed: tuple[str, ...], default: str) -> str:
+    """Like _norm_choice but falls back to ``default`` instead of '' for
+    unknown values (the model occasionally invents type names)."""
+    return _norm_choice(value, allowed) or default
+
+
+def _parse_entities(values) -> list[dict]:
+    if not isinstance(values, list):
+        return []
+    out = []
+    for v in values:
+        if not isinstance(v, dict):
+            continue
+        name = str(v.get("name", "")).strip()
+        if not name:
+            continue
+        out.append({"name": name,
+                    "type": _norm_choice_default(v.get("type", ""), ENTITY_TYPES, "Concept")})
+    return out
+
+
+def _parse_relations(values) -> list[dict]:
+    if not isinstance(values, list):
+        return []
+    out = []
+    for v in values:
+        if not isinstance(v, dict):
+            continue
+        src, dst = str(v.get("src", "")).strip(), str(v.get("dst", "")).strip()
+        if not src or not dst:
+            continue
+        out.append({"src": src, "dst": dst,
+                    "type": _norm_choice_default(v.get("type", ""), RELATION_TYPES, "related_to")})
+    return out
 
 
 def _str_list(values) -> list[str]:
@@ -93,6 +140,8 @@ def _parse(raw: str) -> KnowledgeUnit:
         permissions=_str_list(data.get("permissions", [])),
         tags=_str_list(data.get("tags", [])),
         references=_str_list(data.get("references", [])),
+        entities=_parse_entities(data.get("entities", [])),
+        typed_relations=_parse_relations(data.get("typed_relations", [])),
     )
 
 
@@ -104,7 +153,7 @@ class NullExtractor:
 
 
 class ClaudeExtractor:
-    def __init__(self, model: str, max_tokens: int = 600,
+    def __init__(self, model: str, max_tokens: int = 900,
                  timeout: float = 60.0, max_retries: int = 2):
         import anthropic
 

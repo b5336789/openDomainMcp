@@ -82,6 +82,8 @@ class FakeExtractor:
             audience=audience,
             confidence=1.0,
             version="1.0.0",
+            entities=[{"name": first_word or kind, "type": "Concept"}],
+            typed_relations=[],
         )
 
 
