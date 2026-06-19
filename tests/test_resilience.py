@@ -35,7 +35,9 @@ def test_extractor_passes_timeout_and_retries(monkeypatch):
 
     from opendomainmcp.extract.knowledge import get_extractor
 
-    ext = get_extractor(Settings(request_timeout=12.5, max_retries=4))
+    ext = get_extractor(
+        Settings(extract_knowledge=True, request_timeout=12.5, max_retries=4)
+    )
     unit = ext.extract("hello world", "text")
     assert captured["timeout"] == 12.5
     assert captured["max_retries"] == 4
