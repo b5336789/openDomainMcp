@@ -238,6 +238,7 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
 
     @app.post("/api/items")
     def create_item(body: ItemCreate, ctx: Context = Depends(get_ctx)):
+        from ..graph.builder import build_graph
         from ..models import Chunk, KnowledgeUnit
 
         # Manually authored knowledge is trusted, so it is born approved.
@@ -252,6 +253,10 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         chunk = Chunk(text=body.text, source=body.source, kind="text",
                       knowledge=knowledge)
         ctx.store.upsert([chunk])
+        if chunk.knowledge and not chunk.knowledge.is_empty():
+            entities, edges = build_graph(chunk.knowledge, chunk.id)
+            ctx.graph.upsert_entities(entities)
+            ctx.graph.upsert_edges(edges)
         return ctx.store.get_item(chunk.id)
 
     @app.post("/api/items/{item_id}/approve")
@@ -283,6 +288,7 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
     def delete_item(item_id: str, ctx: Context = Depends(get_ctx)):
         if not ctx.store.delete_item(item_id):
             raise HTTPException(status_code=404, detail="item not found")
+        ctx.graph.delete_for_chunks([item_id])
         return {"deleted": item_id}
 
     # -- settings -------------------------------------------------------

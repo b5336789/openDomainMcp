@@ -61,3 +61,48 @@ def test_list_entities_endpoint_respects_limit(store, fake_graph):
     assert resp.status_code == 200
     body = resp.json()
     assert len(body["items"]) == 1
+
+
+# -- item CRUD graph-sync tests --------------------------------------------
+
+def _bare_client(store, fake_graph):
+    """Client with an empty graph (no pre-seeded entities/edges)."""
+    ctx = Context(settings=__import__("opendomainmcp.config", fromlist=["Settings"]).Settings(),
+                  store=store, pipeline=None, graph=fake_graph)
+    return TestClient(create_app(context=ctx))
+
+
+def test_delete_item_prunes_graph(store, fake_graph):
+    from opendomainmcp.models import Chunk, KnowledgeUnit
+
+    # Arrange: upsert a chunk into the store and a matching entity into the graph.
+    knowledge = KnowledgeUnit(
+        summary="auth summary",
+        knowledge_type="Feature",
+        audience=["engineering"],
+        confidence=1.0,
+        review_status="approved",
+    )
+    chunk = Chunk(text="auth service does auth", source="manual", kind="text",
+                  knowledge=knowledge)
+    store.upsert([chunk])
+    fake_graph.upsert_entities([
+        Entity("auth service", "Auth Service", "Service", chunk.id)
+    ])
+    assert fake_graph.get_entity("Auth Service") is not None
+
+    client = _bare_client(store, fake_graph)
+
+    # Act: delete the item via the API.
+    resp = client.delete(f"/api/items/{chunk.id}")
+    assert resp.status_code == 200
+    assert resp.json()["deleted"] == chunk.id
+
+    # Assert: graph row is pruned.
+    assert fake_graph.get_entity("Auth Service") is None
+
+
+def test_delete_item_missing_returns_404(store, fake_graph):
+    client = _bare_client(store, fake_graph)
+    resp = client.delete("/api/items/nonexistent-id-xyz")
+    assert resp.status_code == 404
