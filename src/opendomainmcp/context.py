@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from .config import Settings, get_settings
 from .embedding import get_embedder
 from .extract import get_extractor
-from .graph.store import MariaGraphStore
+from .graph.store import GraphStoreProtocol, MariaGraphStore
 from .ingest.pipeline import Pipeline
 from .retrieval import get_reranker
 from .store import ChromaStore
@@ -22,7 +22,7 @@ class Context:
     settings: Settings
     store: ChromaStore
     pipeline: Pipeline
-    graph: MariaGraphStore
+    graph: GraphStoreProtocol
 
 
 def build_context(settings: Settings | None = None, collection: str | None = None) -> Context:

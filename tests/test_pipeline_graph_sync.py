@@ -29,3 +29,16 @@ def test_reingest_prunes_stale_graph_nodes(tmp_path, store, fake_extractor, fake
     p.ingest_path(str(f))
     assert fake_graph.get_entity("Payments") is None
     assert fake_graph.get_entity("Refunds") is not None
+
+
+def test_sync_deletion_prunes_graph(tmp_path, store, fake_extractor, fake_graph):
+    d = tmp_path / "docs"
+    d.mkdir()
+    f = d / "a.txt"
+    f.write_text("Payments service.")
+    p = _pipeline(store, fake_extractor, fake_graph)
+    p.ingest_path(str(d), sync=True)
+    assert fake_graph.get_entity("Payments") is not None
+    f.unlink()
+    p.ingest_path(str(d), sync=True)
+    assert fake_graph.get_entity("Payments") is None
