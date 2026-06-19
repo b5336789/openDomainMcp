@@ -104,7 +104,7 @@
   <span class="badge">自動生成 · 由 docs/DEVLOG.md</span>
   <h1><span>📓</span>開發過程記錄</h1>
   <p class="lead">本輪「完成 PRD 所有功能」開發衝刺的詳細過程、並行排程與驗證結果。</p>
-  <p class="stamp">最後更新：2026-06-19 20:52　·　此頁由 <code>docs/build.py</code> 從 Markdown 生成，請勿直接手改 HTML。</p>
+  <p class="stamp">最後更新：2026-06-19 20:54　·　此頁由 <code>docs/build.py</code> 從 Markdown 生成，請勿直接手改 HTML。</p>
 </div></header>
 
 <main class="wrap">
@@ -354,7 +354,7 @@ commit <code>df8c9fa</code>。</p>
 </ul>
 <h2 id="3">3. 最終驗證</h2>
 <ul>
-<li>後端：<code>pytest</code> → <strong>268 passed, 3 skipped</strong>（3 skipped 為需 MariaDB 的整合測試）。</li>
+<li>後端：<code>pytest</code> → <strong>276 passed, 3 skipped</strong>（含 <code>test_integration_wiring.py</code> 對完整 <code>create_app</code> 的端到端接線驗證；3 skipped 為需 MariaDB 的整合測試）。基線 187 → 276，+89 測試、零回歸。</li>
 <li>前端：<code>tsc</code> 綠燈、<code>vite build</code> 成功、Playwright E2E <strong>7 passed</strong>。</li>
 <li>文件：<code>docs/*.html</code> 由 Markdown 重新生成，導覽含 功能說明 / 技術架構 / 任務 / PRD / 開發記錄。</li>
 </ul>

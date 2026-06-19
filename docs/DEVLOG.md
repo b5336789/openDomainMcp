@@ -106,6 +106,6 @@ commit `df8c9fa`。
 
 ## 3. 最終驗證
 
-- 後端：`pytest` → **268 passed, 3 skipped**（3 skipped 為需 MariaDB 的整合測試）。
+- 後端：`pytest` → **276 passed, 3 skipped**（含 `test_integration_wiring.py` 對完整 `create_app` 的端到端接線驗證；3 skipped 為需 MariaDB 的整合測試）。基線 187 → 276，+89 測試、零回歸。
 - 前端：`tsc` 綠燈、`vite build` 成功、Playwright E2E **7 passed**。
 - 文件：`docs/*.html` 由 Markdown 重新生成，導覽含 功能說明 / 技術架構 / 任務 / PRD / 開發記錄。
