@@ -29,6 +29,30 @@ def test_build_graph_dedupes_entities_by_normalized_name():
                                 {"name": "auth service", "type": "Concept"}])
     entities, _ = build_graph(k, chunk_id="c1")
     assert len([e for e in entities if e.normalized_name == "auth service"]) == 1
+    # first-seen wins: first entity "Auth Service" is retained
+    retained = [e for e in entities if e.normalized_name == "auth service"][0]
+    assert retained.display_name == "Auth Service"
+
+
+def test_build_graph_propagates_confidence():
+    k = KnowledgeUnit(
+        entities=[{"name": "Service A", "type": "Service"}],
+        typed_relations=[{"src": "Service A", "dst": "Service B", "type": "depends_on"}],
+        confidence=0.7
+    )
+    entities, edges = build_graph(k, chunk_id="c1")
+    assert len(entities) == 2
+    assert all(e.confidence == 0.7 for e in entities)
+    assert len(edges) == 1
+    assert edges[0].confidence == 0.7
+
+
+def test_build_graph_skips_relation_with_blank_endpoint():
+    k = KnowledgeUnit(
+        typed_relations=[{"src": "   ", "dst": "Service B", "type": "depends_on"}]
+    )
+    entities, edges = build_graph(k, chunk_id="c1")
+    assert edges == []
 
 
 def test_build_graph_empty_knowledge_yields_nothing():
