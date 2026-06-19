@@ -1325,6 +1325,98 @@ git commit -m "feat(graph): entity query API endpoints and MCP tools"
 
 ---
 
+## Task 7: 多知識庫（collection）隔離
+
+> Added after the final whole-branch review surfaced that the graph was platform-global while Chroma is per-collection. The user chose per-collection isolation.
+
+**Files:**
+- Modify: `src/opendomainmcp/graph/store.py` (schema + all methods + `delete_collection`)
+- Modify: `src/opendomainmcp/context.py` (pass collection into `MariaGraphStore`)
+- Modify: `src/opendomainmcp/api/app.py` (`delete_collection` endpoint prunes graph)
+- Modify: `tests/conftest.py` (`FakeGraphStore` collection-aware)
+- Modify: `tests/test_graph_store_mariadb.py` (cross-collection isolation + delete_collection)
+- Test: `tests/test_graph_collection_scope.py` (offline isolation via shared-backing fakes)
+
+**Interfaces:**
+- Consumes: existing `GraphStoreProtocol`, `MariaGraphStore`, `FakeGraphStore`, `build_context`.
+- Produces:
+  - `MariaGraphStore(host, port, user, password, database, collection)` — bound to a collection; every read/write/delete is scoped by it.
+  - `GraphStoreProtocol.delete_collection(name: str) -> None` (added to all stores).
+  - `FakeGraphStore(collection="domain_knowledge", backing=None)` — `backing` is an optional shared dict-of-dicts so two instances bound to different collections can share one underlying store and prove filter-based isolation offline.
+
+- [ ] **Step 1: Write the failing offline isolation test**
+
+```python
+# tests/test_graph_collection_scope.py
+from opendomainmcp.graph.models import Entity
+from tests.conftest import FakeGraphStore
+
+
+def test_collection_isolation_via_shared_backing():
+    backing = {}
+    a = FakeGraphStore(collection="a", backing=backing)
+    b = FakeGraphStore(collection="b", backing=backing)
+    a.upsert_entities([Entity("auth", "Auth", "Service", "c1")])
+    assert a.get_entity("auth") is not None
+    assert b.get_entity("auth") is None          # isolated by collection
+    assert b.list_entities() == []
+
+
+def test_delete_collection_removes_only_that_collection():
+    backing = {}
+    a = FakeGraphStore(collection="a", backing=backing)
+    b = FakeGraphStore(collection="b", backing=backing)
+    a.upsert_entities([Entity("x", "X", "Concept", "c1")])
+    b.upsert_entities([Entity("y", "Y", "Concept", "c2")])
+    a.delete_collection("a")
+    assert a.get_entity("x") is None
+    assert b.get_entity("y") is not None
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `source .venv/bin/activate && ODM_EXTRACT_KNOWLEDGE=true python -m pytest tests/test_graph_collection_scope.py -v`
+Expected: FAIL — `FakeGraphStore` does not accept `collection`/`backing`.
+
+- [ ] **Step 3: Make `MariaGraphStore` collection-scoped**
+
+In `graph/store.py`:
+- Add `collection VARCHAR(255) NOT NULL` to all three `CREATE TABLE` statements and incorporate it into each PRIMARY KEY: `entities (collection, normalized_name)`, `entity_chunks (collection, normalized_name, chunk_id)`, `edges (collection, src, dst, relation_type, chunk_id)`.
+- `__init__` gains a `collection: str` parameter stored as `self._collection`.
+- Every `INSERT`/`SELECT`/`DELETE` includes `collection` (insert the value; filter `WHERE collection=%s AND ...`). The orphan-entity cleanup in `delete_for_chunks` becomes `DELETE FROM entities WHERE collection=%s AND normalized_name NOT IN (SELECT normalized_name FROM entity_chunks WHERE collection=%s)`.
+- Add `delete_collection(self, name: str)`: delete all rows from the three tables `WHERE collection=%s` (name), so the API can prune an arbitrary named collection regardless of the bound one.
+
+> Read the current `store.py` carefully and thread `self._collection` through every existing statement — do not miss `get_entity`'s `entity_chunks` lookup or the `_get_entity_with_cur` helper.
+
+- [ ] **Step 4: Make `FakeGraphStore` collection-aware (conftest)**
+
+Refactor `FakeGraphStore` so its state lives in a `backing` dict keyed by collection (default a fresh dict), accepts `collection` + optional shared `backing`, and filters every operation by `self._collection`. Add `delete_collection(name)` that clears only `name`'s slice of `backing`. Keep all return shapes identical to before. The existing `fake_graph` fixture stays `FakeGraphStore()` (default collection) — confirm existing tests still pass.
+
+- [ ] **Step 5: Run isolation tests + full suite**
+
+Run: `source .venv/bin/activate && ODM_EXTRACT_KNOWLEDGE=true python -m pytest tests/test_graph_collection_scope.py -v && ODM_EXTRACT_KNOWLEDGE=true python -m pytest -q`
+Expected: new tests PASS; full suite green.
+
+- [ ] **Step 6: Wire collection through `build_context` and the API drop path**
+
+- `context.py`: construct `MariaGraphStore(..., collection=collection or settings.collection_name)`.
+- `api/app.py` `delete_collection`: after `ctx.store.drop_collection(name)`, call `ctx.graph.delete_collection(name)`.
+
+- [ ] **Step 7: Extend the MariaDB integration test**
+
+Add to `tests/test_graph_store_mariadb.py` a test (same `@pytest.mark.integration`, skips without `GRAPH_DB_HOST`) that builds two `MariaGraphStore` on the SAME database with different `collection` values, upserts an entity in each, asserts each store sees only its own, then `delete_collection` on one leaves the other intact.
+
+- [ ] **Step 8: Run full suite + commit**
+
+Run: `source .venv/bin/activate && ODM_EXTRACT_KNOWLEDGE=true python -m pytest -q` → green (1 skipped).
+
+```bash
+git add -A
+git commit -m "feat(graph): scope entity graph per collection (schema, stores, drop path)"
+```
+
+---
+
 ## Self-Review
 
 **Spec coverage:**

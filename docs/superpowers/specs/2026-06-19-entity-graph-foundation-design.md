@@ -120,6 +120,10 @@ graph_db_name
 - MariaDB **整合測試**標記 `@pytest.mark.integration`，需 `graph_db_*` 環境變數才跑；CI 預設略過或用服務容器。
 - `FakeExtractor` 延伸回傳新的 `entities`/`typed_relations`（比照 task 2.6）。
 
+## 8b. 多知識庫（collection）隔離
+
+平台支援多個獨立的 Chroma collection（每個是一個知識庫）。Entity Graph **依 collection 隔離**：`entities`/`entity_chunks`/`edges` 三表皆帶 `collection` 欄位並納入主鍵，所有查詢/寫入/刪除都以 `collection` 過濾。`GraphStore` 於建構時綁定 collection（比照 `ChromaStore` 綁定 `collection_name`），由 `build_context(collection=...)` 傳入。`DELETE /api/collections/{name}` 在 `store.drop_collection(name)` 之後呼叫 `graph.delete_collection(name)`，同步清掉該 collection 的圖。跨 collection 真正的隔離由 MariaDB 整合測試驗證（共享 DB、collection 欄位過濾）。
+
 ## 9. 資料遷移/回填
 
 - 新 schema 由 `ensure_schema()` 冪等自動建表。
