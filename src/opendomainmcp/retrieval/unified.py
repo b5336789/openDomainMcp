@@ -26,6 +26,8 @@ def search_unified(store, query, *, top_k=5, mode="vector", settings,
     if not article_hits:
         return chunk_hits
 
+    # Merge chunk and article results by id. Both use sha256 content hashes for ids,
+    # so id collision is not a real concern; rrf_fuse already keys by id.
     pool = {r.id: r for r in chunk_hits}
     pool.update({r.id: r for r in article_hits})
     fused = rrf_fuse([[h.id for h in chunk_hits], [h.id for h in article_hits]],
