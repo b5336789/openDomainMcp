@@ -1,7 +1,7 @@
 # Article-Augmented Retrieval (`ask` + `search`)
 
 **Date:** 2026-06-20
-**Status:** Design approved (outline), pending spec review
+**Status:** Design approved; open questions resolved. Ready for implementation plan.
 
 ## Problem
 
@@ -134,11 +134,13 @@ ask: _format_sources/_citations render article vs chunk; citation carries "type"
 - `search_unified` LLM-free and store-backed via the conftest `store` fixture +
   `.sibling(...)`; no network.
 
-## Open questions for spec review
+## Resolved decisions
 
-1. Default: ship with `retrieve_include_articles=True` (articles in by default), or
-   `False` (opt-in until trusted)?
-2. Should the `search` CLI show a per-hit provenance marker (`[article]`/`[code]`),
-   or only articles get a marker?
-3. `top_k` split: search each collection for the full `top_k` then fuse to `top_k`
-   (proposed), or reserve a slot quota per source?
+1. **Default `retrieve_include_articles=True`** — articles participate by default;
+   the runtime-editable flag lets it be turned off.
+2. **Only article hits get a marker.** An article hit prints with an `[article]`
+   marker + its `title`; chunk output is unchanged from today (smallest diff,
+   least-surprising, keeps existing `search` tests intact).
+3. **`top_k` from each, fuse to `top_k`.** Search each collection for the full
+   `top_k`, RRF-fuse the two ranked id lists, truncate to `top_k`. No per-source
+   quota.
