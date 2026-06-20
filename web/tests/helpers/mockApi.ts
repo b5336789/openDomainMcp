@@ -157,6 +157,7 @@ function buildDefaults(): Record<string, MockValue> {
     "GET /api/graph/entities": DEFAULT_GRAPH_ENTITIES,
     "GET /api/graph/workflows": DEFAULT_GRAPH_WORKFLOWS,
     "GET /api/items": [],
+    "GET /api/articles": [],
   };
 }
 

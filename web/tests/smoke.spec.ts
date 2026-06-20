@@ -7,6 +7,7 @@ const NAV_LABELS = [
   "Explore",
   "Ask",
   "Browse / Edit",
+  "Articles",
   "Review",
   "Graph",
   "Advisor",
