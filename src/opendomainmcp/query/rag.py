@@ -42,13 +42,21 @@ def _citations(results: list[SearchResult]) -> list[dict]:
     cites = []
     for i, r in enumerate(results, 1):
         is_article = r.metadata.get("kind") == "article"
+        if is_article:
+            source = _source_label(r)   # title / topic / id
+            symbol = None
+            type_ = "article"
+        else:
+            source = r.metadata.get("source")  # bare path — CLI appends ::symbol itself
+            symbol = r.metadata.get("symbol")
+            type_ = "chunk"
         cites.append({
             "n": i,
             "id": r.id,
-            "source": _source_label(r),
-            "symbol": None if is_article else r.metadata.get("symbol"),
+            "source": source,
+            "symbol": symbol,
             "score": r.score,
-            "type": "article" if is_article else "chunk",
+            "type": type_,
         })
     return cites
 

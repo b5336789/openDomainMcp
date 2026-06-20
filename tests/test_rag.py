@@ -115,6 +115,29 @@ def test_ask_includes_article_body_and_marks_citation_type(store):
     assert art_cite["source"] == "Order Approval Rule"
 
 
+def test_chunk_citation_source_is_bare_path_not_symbol_qualified():
+    """_citations must return bare source path for code chunks, not 'source::symbol'.
+
+    cli.py:_cmd_ask appends '::symbol' itself when rendering, so if _citations
+    already returned 'source::symbol' the symbol would be printed twice.
+    """
+    from opendomainmcp.models import SearchResult
+    from opendomainmcp.query.rag import _citations
+
+    r = SearchResult(
+        id="abc",
+        text="def rrf_fuse(): ...",
+        score=0.9,
+        metadata={"kind": "code", "source": "f.py", "symbol": "foo"},
+    )
+    cites = _citations([r])
+    assert len(cites) == 1
+    c = cites[0]
+    assert c["source"] == "f.py", f"expected bare path, got {c['source']!r}"
+    assert c["symbol"] == "foo"
+    assert c["type"] == "chunk"
+
+
 def test_format_sources_handles_article_metadata_without_source_key():
     from opendomainmcp.models import SearchResult
     from opendomainmcp.query.rag import _citations, _format_sources
