@@ -56,7 +56,14 @@ def gather_topics(items: list[dict], extra_topics: Iterable[str] = ()) -> list[T
         meta = item.get("metadata") or {}
         is_code = str(meta.get("kind", "")).lower() == "code"
         business = _is_business(meta)
+        # Dedupe concepts by normalized key within each item to ensure each chunk
+        # contributes at most once per distinct (normalized, case-insensitive) concept.
+        seen_keys: set[str] = set()
         for name in _concepts(meta):
+            key = name.strip().lower()
+            if not key or key in seen_keys:
+                continue
+            seen_keys.add(key)
             tc = _ensure(name)
             if tc is None:
                 continue

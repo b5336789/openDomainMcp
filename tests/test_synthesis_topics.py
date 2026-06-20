@@ -41,3 +41,26 @@ def test_extra_topics_from_graph_are_folded_and_deduped():
     assert names.count("billing engine") == 1   # deduped against existing concept
     # "ledger" has no chunk support → cannot pass the gate, so it is dropped.
     assert "ledger" not in names
+
+
+def test_repeated_concept_within_single_chunk_counts_once():
+    """Bug fix: a single chunk with repeated concepts should not falsely pass the gate."""
+    items = [
+        _item("only", "code", "Repeated, Repeated", ktype="Permission")
+    ]
+    topics = gather_topics(items)
+    names = [t.name for t in topics]
+    # One chunk can only contribute business_hits=1, so it should be gated out (needs >1).
+    assert "repeated" not in names
+
+
+def test_audience_only_multi_mention_without_business_type_passes():
+    """Coverage gap: two chunks with audience but no business knowledge_type should pass."""
+    items = [
+        _item("a", "code", "SharedThing", audience="product_manager"),
+        _item("b", "text", "SharedThing", audience="product_manager"),
+    ]
+    topics = gather_topics(items)
+    names = [t.name for t in topics]
+    # business_hits == 2 from audience, should pass gate.
+    assert "sharedthing" in names
