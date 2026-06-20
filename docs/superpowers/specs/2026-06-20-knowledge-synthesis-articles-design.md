@@ -1,7 +1,7 @@
 # Knowledge Synthesis — Business-Meaning Articles
 
 **Date:** 2026-06-20
-**Status:** Design approved (outline), pending spec review
+**Status:** Design approved (outline) + revised for full autonomy, pending spec review
 
 ## Problem
 
@@ -27,8 +27,11 @@ stops at "one small label per chunk."
   topic and writes one conversational article per business-meaningful topic.
 - Articles are **human-readable** (browsable) **and retrievable** (stored so search
   / `ask` can use and cite them).
-- A **thin-slice-first** workflow: produce 5–10 articles, let the user eyeball them,
-  then calibrate the business-relevance filter — not a one-shot full-system run.
+- **Fully autonomous: no human-in-the-loop.** The default run takes zero arguments,
+  derives its own thresholds, judges business-relevance itself, and **self-verifies**
+  its output. No human calibration gate and no manual review are required for the
+  pipeline to complete. There are **no human-tuned magic numbers** in the default
+  path; CLI flags exist only as optional escape hatches.
 
 ## Non-Goals
 
@@ -52,7 +55,8 @@ high-value business knowledge.
 ## Pipeline (new `synthesis/` module, driven by `build_context()`)
 
 Six stages, run by a new `synthesize` command. Each stage is independently
-understandable and testable.
+understandable and testable. **The default run is fully autonomous and takes no
+arguments.**
 
 ### 1. Gather — candidate topics
 Read **already-stored** chunk metadata from Chroma (`entities` / `concepts` are
@@ -60,19 +64,22 @@ already there — no re-extraction). For each candidate topic, count how many ch
 mention it and record whether it appears in **code chunks**, **doc chunks**, or
 both (the cross-validated flag).
 
-### 2. Score + rank — filter to business-meaningful topics
-Keep a topic if it appears in ≥ N chunks (N configurable) **and** has at least one
-business signal:
-- `knowledge_type` in the business set (Feature / Workflow / Permission /
-  Constraint), **or**
-- `audience` includes `product_manager` / `solutions_architect`, **or**
-- **cross-validated** (present in both code and docs) — strongest signal.
+### 2. Gate — structural filter (no tuned numbers)
+Keep a topic using a **structural rule**, not a human-picked threshold:
 
-Rank by signal strength (cross-validated weighted highest). **Thin slice: take the
-top K (default 5–10).**
+> A topic qualifies if it is **cross-validated** (present in both code and docs),
+> **or** it is mentioned in **more than one** chunk whose `knowledge_type` is in the
+> business set (Feature / Workflow / Permission / Constraint) or whose `audience`
+> includes `product_manager` / `solutions_architect`.
+
+"More than once" is a structural minimum (filters one-off noise), not a tuning knob.
+Topics are **ranked** by signal strength (cross-validated highest) only to order the
+work and the report — **every** gated topic is processed; there is no human-chosen K.
+The judgement of "is this actually worth an article" is delegated to the LLM critic
+in stage 5, not to a numeric cutoff.
 
 ### 3. Collect — evidence per topic
-For each surviving topic, use the existing hybrid search to pull its most relevant
+For each gated topic, use the existing hybrid search to pull its most relevant
 chunks, partitioned into a **code-evidence** set and a **doc-evidence** set.
 
 ### 4. Synthesize — one article per topic (LLM, injected extractor-style client)
@@ -84,9 +91,21 @@ Fixed structure, conversational prose:
 The LLM also returns a `title` and a `business_relevance` score (0–1). Per-topic
 failures are recorded, never silently dropped (Fail Loud).
 
-### 5. Filter — by `business_relevance`
-Drop articles below a threshold (configurable). The threshold's initial value is a
-guess to be **calibrated by the user reviewing the thin-slice output**.
+### 5. Critic — automated self-verification (replaces the human review gate)
+A **second, independent LLM call** acts as an adversarial critic over each draft
+article, returning a structured verdict:
+- **Grounded?** Is every substantive claim supported by the cited source chunks?
+  (Refute hallucinations — the article's claims are checked against the evidence it
+  was given.)
+- **Business-meaningful?** Is this genuine domain/business knowledge, or just
+  implementation trivia dressed up?
+
+An article is **kept only if the critic passes both checks.** This is the autonomy
+safeguard: quality rides on the judges, so we use two independent passes (author +
+skeptic) instead of trusting one. The numeric `business_relevance` is retained for
+the report/ranking but is **not** a human-tuned gate — the binary critic verdict is
+the gate. To keep the judges honest, the critic is prompted to **default to reject
+when uncertain**.
 
 ### 6. Store — retrievable + browsable
 Persist articles in a **separate Chroma collection `articles`** (does not pollute
@@ -106,17 +125,22 @@ Article:
   title: str
   topic: str               # the entity/concept this article is about
   body: str                # conversational markdown
-  business_relevance: float
+  business_relevance: float  # author's self-score, for ranking/report only
   source_chunk_ids: list[str]
   sources: list[str]       # "file:line" citations
   cross_validated: bool    # appeared in both code and docs
+  critic_verdict: dict     # {grounded: bool, business_meaningful: bool, note: str}
 ```
+
+Only articles whose `critic_verdict` passes both checks are stored.
 
 ## Surfaces
 
-- **CLI:** `./run.sh synthesize [--top-k K] [--min-relevance X] [--min-mentions N]`
-  — runs the six stages, stores articles, prints a summary (title + relevance +
-  source count per article).
+- **CLI:** `./run.sh synthesize` — **zero required arguments**; runs the full
+  autonomous pipeline, stores surviving articles, prints a report. Optional escape
+  hatches only: `--limit N` (cap topics processed, for cost control on huge
+  corpora), `--dry-run` (synthesize + critique but print instead of store). No flag
+  is needed for a normal run.
 - **Storage:** the `articles` Chroma collection, reachable from `build_context()`
   so search / a future UI page / `ask` can consume it.
 - UI browse page: **deferred** to a follow-up (storage is built to support it now).
@@ -124,29 +148,51 @@ Article:
 ## Error handling (Fail Loud)
 
 - No LLM API key → fail loud, do not fabricate articles.
-- Per-topic synthesis failure → recorded in a report, other topics continue.
-- Zero candidate topics survive scoring → explicit message ("no business-meaningful
-  topics matched current thresholds"), not a silent empty run.
+- Per-topic synthesis or critic failure → recorded in the report, other topics
+  continue.
+- Zero candidate topics survive the gate, or the critic rejects everything →
+  explicit message (e.g. "no business-meaningful topics passed the critic"), not a
+  silent empty run.
+
+## Autonomy & quality safeguards
+
+Because the run is fully autonomous (no human calibration, no human review gate),
+quality rests entirely on the LLM judges. Safeguards that replace the human:
+
+- **Two independent passes** — author (stage 4) then skeptical critic (stage 5).
+  An article ships only if the critic confirms it is grounded *and*
+  business-meaningful.
+- **Grounding by construction** — the critic checks the article's claims against the
+  exact source chunks it was synthesized from; unsupported claims fail.
+- **Reject-when-uncertain** — the critic defaults to reject, biasing toward
+  precision over recall (better to drop a borderline article than ship a wrong one).
+- **Observable, non-blocking report** — every run prints what was gated, what the
+  critic rejected and why, and what was stored. Nothing blocks on a human, but a
+  human *can* inspect quality at any time. (Fail Loud: silent truncation / silent
+  empty runs are forbidden.)
+
+**Risk (explicit):** with no human in the loop, early-corpus article quality depends
+on judge quality; a systematically biased judge could pass weak articles or drop
+good ones. The report is the early-warning signal. If precision proves poor, the
+mitigation is to strengthen the critic prompt or add a second critic vote — **not**
+to reintroduce a human gate.
 
 ## Testing (business-logic, offline)
 
-- **Gather/Score** with fake stored chunks: cross-validated topic ranks above a
-  code-only topic; sub-threshold-mention topics are excluded.
-- **Filter:** an article below `min_relevance` is dropped; one above is kept.
+- **Gather/Gate** with fake stored chunks: a cross-validated topic passes the gate;
+  a code-only single-mention topic is excluded; ranking puts cross-validated first.
+- **Critic gate:** an article the critic marks `grounded=false` or
+  `business_meaningful=false` is dropped; one passing both is kept.
 - **Idempotency:** same topic + same member chunk ids → same article id; re-run does
   not duplicate.
-- **Fail Loud:** missing key raises; per-topic failure is reported, not swallowed.
-- LLM client is **injected** (fake returning canned article JSON) so the suite stays
-  offline, matching the existing extractor test pattern.
-
-## Validation plan (thin slice first)
-
-Run `synthesize --top-k 8` against the user's real legacy sample. The user reviews
-the articles and we calibrate: `min_mentions`, the business-signal set, and
-`min_relevance`. Only after calibration do we consider a full-corpus run or UI work.
+- **Fail Loud:** missing key raises; per-topic failure is reported, not swallowed;
+  all-rejected → explicit message.
+- Both LLM calls (author + critic) are **injected** fakes returning canned JSON, so
+  the suite stays offline, matching the existing extractor test pattern.
 
 ## Open questions for spec review
 
-1. Default values: `top-k` (8?), `min-mentions` (3?), `min-relevance` (0.5?).
-2. Topic source for stage 1: graph `entities` only, or also free-form `concepts`?
-3. Should `ask` prefer the `articles` collection now, or strictly later phase?
+1. Topic source for stage 1: graph `entities` only, or also free-form `concepts`?
+2. Should `ask` prefer the `articles` collection now, or strictly a later phase?
+3. Critic strength: single critic call (cheaper) vs. best-of-N votes (more robust,
+   more expensive) for the initial implementation.
