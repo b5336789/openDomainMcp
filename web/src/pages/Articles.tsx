@@ -31,7 +31,7 @@ export default function Articles() {
         toast.show(String(e), "red");
         setArticles([]);
       });
-  }, []);
+  }, [toast]);
 
   const filtered = useMemo(() => {
     if (!articles) return [];
@@ -41,6 +41,11 @@ export default function Articles() {
       `${a.title} ${a.topic} ${a.body}`.toLowerCase().includes(needle),
     );
   }, [articles, q]);
+
+  const active =
+    selected && filtered.some((a) => a.id === selected.id)
+      ? selected
+      : filtered[0] ?? null;
 
   return (
     <div className="space-y-5">
@@ -81,9 +86,10 @@ export default function Articles() {
               <button
                 key={a.id}
                 onClick={() => setSelected(a)}
+                aria-current={active?.id === a.id ? "true" : undefined}
                 className={
                   "block w-full px-3.5 py-3 text-left transition hover:bg-slate-50 dark:hover:bg-slate-800/50" +
-                  (selected?.id === a.id
+                  (active?.id === a.id
                     ? " bg-slate-50 dark:bg-slate-800/50"
                     : "")
                 }
@@ -107,24 +113,24 @@ export default function Articles() {
             )}
           </Card>
 
-          {selected && (
+          {active && (
             <Card className="space-y-4 p-5">
               <div>
                 <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-50">
-                  {selected.title}
+                  {active.title}
                 </h2>
-                <div className="mt-1 text-sm text-slate-500">{selected.topic}</div>
+                <div className="mt-1 text-sm text-slate-500">{active.topic}</div>
               </div>
               <div className="whitespace-pre-wrap leading-relaxed text-slate-800 dark:text-slate-200">
-                {selected.body}
+                {active.body}
               </div>
-              {selected.sources.length > 0 && (
+              {active.sources.length > 0 && (
                 <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
                   <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
                     Sources
                   </div>
                   <ul className="space-y-1 font-mono text-xs text-slate-600 dark:text-slate-400">
-                    {selected.sources.map((s) => (
+                    {active.sources.map((s) => (
                       <li key={s}>{s}</li>
                     ))}
                   </ul>
