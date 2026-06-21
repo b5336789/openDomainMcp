@@ -31,8 +31,11 @@ src/opendomainmcp/api/static/
 .idea/
 .vscode/
 
-# Claude Code agent worktrees / local state
-.claude/
+# Claude Code agent worktrees / local state (but track shared, checked-in skills)
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/run-open-domain-mcp/
 .gstack/
 
 # Subagent-driven-development scratch (briefs, reports, diffs, ledger)
