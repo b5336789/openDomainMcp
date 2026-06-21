@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
-import { api, SourceInfo, Stats } from "../api";
+import { api, SettingsView, SourceInfo, Stats } from "../api";
 import {
   Badge,
   Button,
@@ -20,19 +20,40 @@ import {
   IconTrash,
 } from "../components/icons";
 
-const STAGES = [
-  { name: "load", hint: "files" },
-  { name: "split", hint: "AST / text" },
-  { name: "extract", hint: "Claude" },
-  { name: "embed", hint: "vectors" },
-  { name: "store", hint: "Chroma" },
-  { name: "search", hint: "hybrid" },
-];
+// The pipeline diagram reflects real, current state: each stage reports a
+// value derived from /api/stats, /api/sources, and /api/settings rather than a
+// fixed label. A null value means the backing request hasn't resolved yet.
+function pipelineStages(
+  stats: Stats | null,
+  sources: SourceInfo[] | null,
+  settings: SettingsView | null,
+): { name: string; value: string | null }[] {
+  const searchMode = settings ? String(settings.editable.search_mode) : null;
+  const rerank = settings ? Boolean(settings.editable.rerank_enabled) : false;
+  return [
+    { name: "load", value: sources ? `${sources.length} sources` : null },
+    {
+      name: "split",
+      value: stats ? `${stats.count.toLocaleString()} chunks` : null,
+    },
+    {
+      name: "extract",
+      value: stats ? (stats.extract_knowledge ? "on" : "off") : null,
+    },
+    { name: "embed", value: stats ? stats.embedder : null },
+    { name: "store", value: stats ? stats.collection : null },
+    {
+      name: "search",
+      value: searchMode ? (rerank ? `${searchMode} + rerank` : searchMode) : null,
+    },
+  ];
+}
 
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sources, setSources] = useState<SourceInfo[] | null>(null);
+  const [settings, setSettings] = useState<SettingsView | null>(null);
   const [pending, setPending] = useState<SourceInfo | null>(null);
   const [deleting, setDeleting] = useState(false);
   const toast = useToast();
@@ -50,6 +71,15 @@ export default function Dashboard() {
       .then((r) => setSources(r.sources))
       .catch(() => setSources([]));
   }, []);
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null));
+  }, []);
+
+  const stages = pipelineStages(stats, sources, settings);
 
   async function confirmDelete() {
     if (!pending) return;
@@ -85,17 +115,24 @@ export default function Dashboard() {
           <IconSparkle className="h-4 w-4" /> Pipeline
         </h3>
         <div className="flex flex-wrap items-stretch gap-2">
-          {STAGES.map((s, i) => (
+          {stages.map((s, i) => (
             <div key={s.name} className="flex items-stretch gap-2">
               <div className="flex flex-col items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-center dark:border-slate-700 dark:bg-slate-800/60">
                 <span className="text-sm font-medium capitalize text-slate-700 dark:text-slate-200">
                   {s.name}
                 </span>
-                <span className="text-[11px] text-slate-400 dark:text-slate-500">
-                  {s.hint}
-                </span>
+                {s.value === null ? (
+                  <Skeleton className="mt-1 h-3 w-12" />
+                ) : (
+                  <span
+                    className="max-w-[10rem] truncate text-[11px] text-slate-400 dark:text-slate-500"
+                    title={s.value}
+                  >
+                    {s.value}
+                  </span>
+                )}
               </div>
-              {i < STAGES.length - 1 && (
+              {i < stages.length - 1 && (
                 <span className="self-center text-slate-300 dark:text-slate-600">
                   →
                 </span>
