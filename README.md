@@ -412,6 +412,26 @@ A six-page console (React SPA served by FastAPI):
 | **Browse / Edit** | Page through stored chunks; edit metadata; delete items |
 | **Settings** | View/edit runtime settings (persisted to `settings.json`) |
 
+#### Screenshots
+
+The **Dashboard** shows live collection status — chunk count, embedder, dimension,
+data dir, and the ingested sources (here a real ERPNext knowledge base of 243 docs):
+
+![Dashboard](docs/screenshots/dashboard-erpnext.png)
+
+The **Articles** page surfaces synthesized, business-meaning articles distilled from
+the knowledge base:
+
+![Articles](docs/screenshots/articles.png)
+
+More views — Ingest with live progress, Explore, Ask, and Browse / Edit:
+
+| Ingest | Explore |
+| --- | --- |
+| ![Ingest](docs/screenshots/02-ingest.jpg) | ![Explore](docs/screenshots/03-explore.jpg) |
+| **Ask** | **Browse / Edit** |
+| ![Ask](docs/screenshots/07-ask.jpg) | ![Browse / Edit](docs/screenshots/05-browse-edit.jpg) |
+
 A **knowledge-base switcher** in the sidebar lets you create, switch, and target
 collections; the choice is remembered in `localStorage` and sent via the
 `X-Collection` header / `collection` query param. Dark mode included.
