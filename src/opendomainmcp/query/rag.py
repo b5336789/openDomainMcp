@@ -25,6 +25,8 @@ def _source_label(r) -> str:
     meta = r.metadata
     if meta.get("kind") == "article":
         return meta.get("title") or meta.get("topic") or r.id
+    if meta.get("kind") == "graph":
+        return meta.get("title") or "Knowledge graph"
     loc = meta.get("source", "?")
     if meta.get("symbol"):
         loc += f"::{meta['symbol']}"
@@ -56,11 +58,15 @@ def _apply_relevance_floor(results: list[SearchResult], settings) -> list[Search
 def _citations(results: list[SearchResult]) -> list[dict]:
     cites = []
     for i, r in enumerate(results, 1):
-        is_article = r.metadata.get("kind") == "article"
-        if is_article:
+        kind = r.metadata.get("kind")
+        if kind == "article":
             source = _source_label(r)   # title / topic / id
             symbol = None
             type_ = "article"
+        elif kind == "graph":
+            source = _source_label(r)
+            symbol = None
+            type_ = "graph"
         else:
             source = r.metadata.get("source", "?")  # bare path — CLI appends ::symbol itself
             symbol = r.metadata.get("symbol")
@@ -182,13 +188,18 @@ def _synthesize_stream(settings, system: str, user: str):
     )
 
 
-def answer_question(query, store, settings, top_k: int = 6, synthesize=None) -> dict:
+def answer_question(query, store, settings, top_k: int = 6, synthesize=None, graph=None) -> dict:
     from ..retrieval import search_unified
     results = search_unified(store, query, top_k=top_k,
                              mode=settings.search_mode, settings=settings)
     results = _apply_relevance_floor(results, settings)
     if not results:
         return {"answer": "No indexed content matched this question.", "citations": []}
+    if getattr(settings, "retrieve_include_graph", False) and graph is not None:
+        from .graph_context import build_graph_context
+        gc = build_graph_context(graph, query, results, settings)
+        if gc is not None:
+            results = results + [gc]
     user = f"Question: {query}\n\nSources:\n{_format_sources(results)}"
     if synthesize is not None:
         answer = synthesize(settings.answer_model, _SYSTEM, user)
@@ -197,7 +208,7 @@ def answer_question(query, store, settings, top_k: int = 6, synthesize=None) -> 
     return {"answer": answer, "citations": _citations(results)}
 
 
-def answer_question_stream(query, store, settings, top_k: int = 6, synthesize_stream=None):
+def answer_question_stream(query, store, settings, top_k: int = 6, synthesize_stream=None, graph=None):
     """Like :func:`answer_question` but yields incremental events:
 
     ``{"type": "delta", "text": ...}`` for each answer fragment, then a final
@@ -212,6 +223,11 @@ def answer_question_stream(query, store, settings, top_k: int = 6, synthesize_st
         yield {"type": "delta", "text": "No indexed content matched this question."}
         yield {"type": "citations", "citations": []}
         return
+    if getattr(settings, "retrieve_include_graph", False) and graph is not None:
+        from .graph_context import build_graph_context
+        gc = build_graph_context(graph, query, results, settings)
+        if gc is not None:
+            results = results + [gc]
     user = f"Question: {query}\n\nSources:\n{_format_sources(results)}"
     if synthesize_stream is not None:
         stream = synthesize_stream(settings.answer_model, _SYSTEM, user)
