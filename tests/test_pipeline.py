@@ -74,3 +74,11 @@ def test_progress_events_emitted(pipeline, tmp_path):
     stages = {e["stage"] for e in events}
     assert {"load", "split", "embed", "store", "done"} <= stages
     assert any(e["stage"] == "skip" for e in events)  # the binary file
+
+
+def test_load_and_split_returns_indexed_chunks(pipeline, tmp_path):
+    f = tmp_path / "calc.py"
+    f.write_text("def add(a, b):\n    return a + b\n")
+    chunks = pipeline._load_and_split(f)
+    assert chunks and all(c.chunk_index == i for i, c in enumerate(chunks))
+    assert all(c.kind == "code" for c in chunks)

@@ -150,20 +150,10 @@ class Pipeline:
                 self._emit(progress, "skip", str(f), detail="outside ingest root")
         return safe
 
-    def _ingest_file(self, path: Path, report: IngestReport, progress: Optional[Progress]):
-        self._emit(progress, "load", str(path))
-        try:
-            doc = load_file(path)
-        except UnsupportedFileError as exc:
-            report.skipped.append({"path": str(path), "reason": str(exc)})
-            self._emit(progress, "skip", str(path), detail=str(exc))
-            return
-        except Exception as exc:  # unexpected read error: report, keep going
-            report.errors.append({"path": str(path), "error": repr(exc)})
-            self._emit(progress, "error", str(path), detail=repr(exc))
-            return
-
-        self._emit(progress, "split", str(path))
+    def _load_and_split(self, path: Path) -> list[Chunk]:
+        """Load and split one file into indexed chunks. Raises on load failure;
+        returns [] for an empty document. Emits no progress (callers do)."""
+        doc = load_file(path)
         if doc.kind == "code":
             chunks = split_code(doc.text, doc.language, str(path),
                                 self._settings.code_max_chunk_chars)
@@ -179,19 +169,32 @@ class Pipeline:
         else:
             chunks = [Chunk(text=t, source=str(path), kind="text")
                       for t in self._splitter.split(doc.text)]
+        for i, chunk in enumerate(chunks):
+            chunk.chunk_index = i
+        return chunks
+
+    def _ingest_file(self, path: Path, report: IngestReport, progress: Optional[Progress]):
+        self._emit(progress, "load", str(path))
+        try:
+            chunks = self._load_and_split(path)
+        except UnsupportedFileError as exc:
+            report.skipped.append({"path": str(path), "reason": str(exc)})
+            self._emit(progress, "skip", str(path), detail=str(exc))
+            return
+        except Exception as exc:  # unexpected read error: report, keep going
+            report.errors.append({"path": str(path), "error": repr(exc)})
+            self._emit(progress, "error", str(path), detail=repr(exc))
+            return
+
+        self._emit(progress, "split", str(path))
         if not chunks:
             report.skipped.append({"path": str(path), "reason": "no content"})
             self._emit(progress, "skip", str(path), detail="no content")
             return
 
-        for i, chunk in enumerate(chunks):
-            chunk.chunk_index = i
-
         self._emit(progress, "extract", str(path), detail=f"{len(chunks)} chunks")
         self._extract_all(chunks, path, report)
 
-        # Reconcile against what's already stored for this source: drop chunks
-        # that no longer exist (e.g. an edited function shifted line ranges).
         new_ids = {c.id for c in chunks}
         stale = self._store.get_ids_for_source(str(path)) - new_ids
         if stale:
