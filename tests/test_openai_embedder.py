@@ -48,3 +48,21 @@ def test_openai_embedder_known_model_dim_without_calling():
 
     emb = OpenAIEmbedder("text-embedding-3-small", client=Boom())
     assert emb.dim == 1536
+
+
+from opendomainmcp.embedding.cloud import _basic_auth_value
+
+
+def test_basic_auth_value_encodes_user_password():
+    # base64("user:pass") == "dXNlcjpwYXNz"
+    assert _basic_auth_value("user:pass") == "Basic dXNlcjpwYXNz"
+
+
+def test_basic_auth_value_splits_on_first_colon_only():
+    # Password may contain a colon; base64("user:pa:ss") == "dXNlcjpwYTpzcw=="
+    assert _basic_auth_value("user:pa:ss") == "Basic dXNlcjpwYTpzcw=="
+
+
+def test_basic_auth_value_rejects_missing_colon():
+    with pytest.raises(ValueError):
+        _basic_auth_value("nocolon")

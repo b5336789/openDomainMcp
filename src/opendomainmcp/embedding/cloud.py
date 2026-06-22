@@ -7,6 +7,7 @@ message instead of silently degrading.
 
 from __future__ import annotations
 
+import base64
 import os
 
 from .base import Embedder
@@ -20,6 +21,19 @@ _VOYAGE_DIMS = {
     "voyage-3-lite": 512,
     "voyage-code-3": 1024,
 }
+
+
+def _basic_auth_value(spec: str) -> str:
+    """Build an HTTP Basic Auth header value from a "user:password" spec.
+
+    Fails loud on a malformed spec rather than sending a broken header.
+    """
+    if ":" not in spec:
+        raise ValueError(
+            "embedder_basic_auth must be 'user:password' (missing ':')"
+        )
+    encoded = base64.b64encode(spec.encode("utf-8")).decode("ascii")
+    return f"Basic {encoded}"
 
 
 class OpenAIEmbedder(Embedder):
