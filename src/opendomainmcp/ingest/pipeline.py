@@ -10,6 +10,7 @@ dicts so callers (e.g. the web UI) can stream live status.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -120,8 +121,9 @@ class Pipeline:
             raise FileNotFoundError(f"{path} does not exist")
         if root is not None:
             files = self._filter_within(files, root, report, progress)
-        for file_path in files:
-            self._ingest_file(file_path, report, progress)
+        with self._batch_prepass(files, report, progress):
+            for file_path in files:
+                self._ingest_file(file_path, report, progress)
         if sync and path.is_dir():
             self._sync_deletions(path, {str(f) for f in files}, report, progress)
         self._emit(progress, "done", str(path), detail=f"{report.files_indexed} files")
@@ -150,20 +152,10 @@ class Pipeline:
                 self._emit(progress, "skip", str(f), detail="outside ingest root")
         return safe
 
-    def _ingest_file(self, path: Path, report: IngestReport, progress: Optional[Progress]):
-        self._emit(progress, "load", str(path))
-        try:
-            doc = load_file(path)
-        except UnsupportedFileError as exc:
-            report.skipped.append({"path": str(path), "reason": str(exc)})
-            self._emit(progress, "skip", str(path), detail=str(exc))
-            return
-        except Exception as exc:  # unexpected read error: report, keep going
-            report.errors.append({"path": str(path), "error": repr(exc)})
-            self._emit(progress, "error", str(path), detail=repr(exc))
-            return
-
-        self._emit(progress, "split", str(path))
+    def _load_and_split(self, path: Path) -> list[Chunk]:
+        """Load and split one file into indexed chunks. Raises on load failure;
+        returns [] for an empty document. Emits no progress (callers do)."""
+        doc = load_file(path)
         if doc.kind == "code":
             chunks = split_code(doc.text, doc.language, str(path),
                                 self._settings.code_max_chunk_chars)
@@ -179,19 +171,32 @@ class Pipeline:
         else:
             chunks = [Chunk(text=t, source=str(path), kind="text")
                       for t in self._splitter.split(doc.text)]
+        for i, chunk in enumerate(chunks):
+            chunk.chunk_index = i
+        return chunks
+
+    def _ingest_file(self, path: Path, report: IngestReport, progress: Optional[Progress]):
+        self._emit(progress, "load", str(path))
+        try:
+            chunks = self._load_and_split(path)
+        except UnsupportedFileError as exc:
+            report.skipped.append({"path": str(path), "reason": str(exc)})
+            self._emit(progress, "skip", str(path), detail=str(exc))
+            return
+        except Exception as exc:  # unexpected read error: report, keep going
+            report.errors.append({"path": str(path), "error": repr(exc)})
+            self._emit(progress, "error", str(path), detail=repr(exc))
+            return
+
+        self._emit(progress, "split", str(path))
         if not chunks:
             report.skipped.append({"path": str(path), "reason": "no content"})
             self._emit(progress, "skip", str(path), detail="no content")
             return
 
-        for i, chunk in enumerate(chunks):
-            chunk.chunk_index = i
-
         self._emit(progress, "extract", str(path), detail=f"{len(chunks)} chunks")
         self._extract_all(chunks, path, report)
 
-        # Reconcile against what's already stored for this source: drop chunks
-        # that no longer exist (e.g. an edited function shifted line ranges).
         new_ids = {c.id for c in chunks}
         stale = self._store.get_ids_for_source(str(path)) - new_ids
         if stale:
@@ -277,6 +282,66 @@ class Pipeline:
                 chunk.knowledge.review_status = "pending"
         except Exception as exc:  # extraction is best-effort; record and continue
             report.errors.append({"path": str(path), "error": f"extract: {exc!r}"})
+
+    @contextlib.contextmanager
+    def _batch_prepass(self, files, report: IngestReport,
+                       progress: Optional[Progress]):
+        """When extract_batch is on, batch-extract all chunk texts up front and
+        run the per-file loop with a CachedExtractor. No-op otherwise."""
+        if not getattr(self._settings, "extract_batch", False):
+            yield
+            return
+        if self._settings.llm_backend.lower() != "anthropic":
+            raise ValueError(
+                "ODM_EXTRACT_BATCH requires the anthropic LLM backend"
+            )
+        cache = self._batch_extract_files(files, report, progress)
+        from .batch_extract import CachedExtractor
+
+        original = self._extractor
+        self._extractor = CachedExtractor(cache, original)
+        try:
+            yield
+        finally:
+            self._extractor = original
+
+    def _batch_extract_files(self, files, report: IngestReport,
+                             progress: Optional[Progress]) -> dict:
+        from .batch_extract import BatchItem, _text_hash
+
+        items: dict[str, BatchItem] = {}
+        for f in files:
+            try:
+                chunks = self._load_and_split(f)
+            except Exception:
+                continue  # the real per-file pass records skip/error
+            for c in chunks:
+                if c.knowledge and c.knowledge.knowledge_type:
+                    continue  # pre-classified; not LLM-extracted
+                h = _text_hash(c.text)
+                if h not in items:
+                    items[h] = BatchItem(text_hash=h, text=c.text,
+                                         kind=c.kind, language=c.language)
+        if not items:
+            return {}
+        self._emit(progress, "batch", "extraction",
+                   detail=f"{len(items)} chunks submitted")
+        extractor = self._build_batch_extractor()
+        return extractor.extract_many(
+            list(items.values()),
+            progress=lambda d: self._emit(progress, "batch", "extraction", detail=d),
+        )
+
+    def _build_batch_extractor(self):
+        import anthropic
+
+        from .batch_extract import BatchExtractor
+
+        client = anthropic.Anthropic(
+            timeout=self._settings.request_timeout,
+            max_retries=self._settings.max_retries,
+        )
+        return BatchExtractor(client, self._settings.extraction_model)
 
     def _sync_deletions(self, root: Path, seen: set, report: IngestReport,
                         progress: Optional[Progress]):
