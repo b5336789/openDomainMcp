@@ -117,6 +117,40 @@ into a clean win.** Until then it's a tunable trade: ~0.6 stops 2/3 negatives
 with ~2 false refusals; 0.65 stops 3/3 with ~3. Hence default off — opt in per
 deployment, and track both `refusal_rate` and false refusals here when tuning.
 
+### Fix tracked: graph-augmented retrieval (`retrieve_include_graph`)
+
+The relation/sequence misses (`gr2` "what does `calculate_taxes` call", `wf1`
+"order of steps") have answers that are graph **edges**, not chunk text, but the
+`ask` path ignored the graph. Added opt-in `retrieve_include_graph` (default
+off): when a question explicitly names a code symbol (`Function`/`Class`/`Method`)
+present in the graph, that entity's edges (and any matching workflow's steps) are
+appended as one cited `kind="graph"` source. See
+`query/graph_context.py`; measure with `run_benchmark.py --retrieval-from-ask`.
+
+**Result on this corpus (graph off vs on): retrieval_hit_rate unchanged at 83%
+— no benchmark improvement.** The honest reason is upstream **graph-data
+quality**, not the feature:
+
+- `calculate_taxes` (the entity `gr2` needs) was **not extracted** as an entity
+  in this ingest at all — the graph has 392 entities / 377 edges, but the local
+  model's non-deterministic graph extraction missed `calculate_taxes` and its
+  `calls` edge this run (an earlier ingest *did* capture it). The feature cannot
+  surface an edge that was never extracted.
+- The feature is correct and **precise**: it fires only when a question names a
+  code-symbol entity that exists in the graph (verified: it fires for `_calculate`,
+  which is in the graph; it does **not** fire for the out-of-corpus negative
+  controls or for plain-word / project-name tokens like "ERPNext"). An earlier,
+  looser version seeded plain words + chunk symbols + the CamelCase project name
+  and added noise edges + fired on negatives — tightened to code-symbol entities
+  only.
+
+**Takeaway:** graph-augmented retrieval is the right architecture for relational
+questions, but its payoff is gated on graph-extraction quality. It pays off when
+the needed entity/edge is actually extracted — which ties directly to the
+extraction-robustness work (a stronger extractor, e.g. Claude, captures these
+edges reliably). Left **off by default**; safe (no regression, no fabrication —
+appended only after the relevance floor).
+
 ### Known findings this benchmark was built to track
 
 1. **Retrieval is the bottleneck, not synthesis.** When the right chunk is
