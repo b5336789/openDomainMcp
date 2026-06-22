@@ -27,3 +27,10 @@ def test_retrieve_include_articles_defaults_on_and_is_editable(tmp_path):
     # runtime-editable: update_editable must accept it without "Not editable"
     updated = s.save_overrides({"retrieve_include_articles": False})
     assert updated.retrieve_include_articles is False
+
+
+def test_retrieve_include_graph_defaults_off_and_is_editable():
+    from opendomainmcp.config import EDITABLE_FIELDS, Settings
+    assert Settings().retrieve_include_graph is False
+    assert Settings(retrieve_include_graph=True).retrieve_include_graph is True
+    assert "retrieve_include_graph" in EDITABLE_FIELDS

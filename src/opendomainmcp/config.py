@@ -41,6 +41,7 @@ EDITABLE_FIELDS = (
     "retrieve_approved_only",
     "retrieve_include_articles",
     "retrieve_min_score",
+    "retrieve_include_graph",
 )
 
 
@@ -119,6 +120,10 @@ class Settings(BaseSettings):
     # Scores are cosine similarity (1 - distance); ~0.65 suits the bundled
     # embedder. Only gates synthesis; plain search/MCP views are unaffected.
     retrieve_min_score: float = 0.0
+
+    # Include a knowledge-graph relations source (matched entity edges + any
+    # matching workflow steps) in the ask context. Off or NullGraphStore == today.
+    retrieve_include_graph: bool = False
 
     # Resilience for external API calls (Anthropic): per-request timeout in
     # seconds and the number of automatic retries on transient errors.
