@@ -19,27 +19,26 @@ _MAX_ENTITIES = 3
 _MAX_EDGES = 8
 _MAX_CHARS = 1500
 
-# Common question words that are not entity references. Confirmation via
-# get_entity plus the entity cap bound spurious matches, so this only covers
-# obvious noise — it need not be exhaustive.
-_STOPWORDS = {
-    "which", "does", "what", "when", "where", "how", "function", "functions",
-    "value", "values", "method", "methods", "calls", "call", "step", "steps",
-    "order", "system", "rule", "rules", "used", "field", "fields", "return",
-    "returns", "with", "that", "this", "from", "into", "the", "and", "for",
-}
+# Only seed entities that are actual code symbols. Relational/sequence questions
+# are about what a function/class calls or depends on; module / Concept / Service
+# entities (e.g. the project name "erpnext", which is CamelCase and appears in
+# every question) match broadly and contribute only noise edges.
+_SEED_ENTITY_TYPES = {"Function", "Class", "Method"}
 
 
 def _candidate_names(query: str) -> list[str]:
-    """Identifier-like tokens a question might use to name a graph entity:
-    backtick/quote-delimited spans, then snake_case / CamelCase / dotted tokens,
-    then plain words of length >= 3 that aren't stopwords."""
+    """Tokens that *look like a code entity name* the question is referring to:
+    backtick/quote-delimited spans, and bare snake_case / CamelCase / dotted
+    identifiers. Plain English words are deliberately excluded — they match
+    generic ``Concept`` entities (e.g. "tax", "value") and produce irrelevant
+    edges and false fires on natural-language / out-of-corpus questions. The
+    feature should fire only when the user explicitly names a code symbol."""
     names: list[str] = []
     for m in re.finditer(r"[`\"']([^`\"']+)[`\"']", query):
         names.append(m.group(1).strip())
     for tok in re.findall(r"[A-Za-z_][A-Za-z0-9_.]*", query):
         looks_id = ("_" in tok) or ("." in tok) or any(c.isupper() for c in tok[1:])
-        if looks_id or (len(tok) >= 3 and tok.lower() not in _STOPWORDS):
+        if looks_id:
             names.append(tok)
     seen: set[str] = set()
     out: list[str] = []
@@ -52,30 +51,26 @@ def _candidate_names(query: str) -> list[str]:
 
 
 def _seed_entities(graph, query: str, chunk_results) -> list[dict]:
-    """Confirmed graph entities seeded from question identifiers and the top
-    chunks' symbols. Capped at _MAX_ENTITIES; each confirmed via get_entity."""
+    """Confirmed graph entities the question explicitly names (identifier-shaped
+    tokens, each confirmed via get_entity). Capped at _MAX_ENTITIES.
+
+    ``chunk_results`` is intentionally not seeded from: a retrieved chunk's
+    symbol being a graph entity fires on essentially every question (including
+    out-of-corpus ones, which still retrieve top-k chunks when the relevance
+    floor is off) and its chunk text is already in context, so it adds noise
+    without adding the missing relational fact."""
     seeds: list[dict] = []
     seen: set[str] = set()
-
-    def add(name: str | None) -> None:
-        if not name or len(seeds) >= _MAX_ENTITIES:
-            return
+    for name in _candidate_names(query):
+        if len(seeds) >= _MAX_ENTITIES:
+            break
         ent = graph.get_entity(name)
-        if not ent:
-            return
+        if not ent or ent.get("type") not in _SEED_ENTITY_TYPES:
+            continue
         key = (ent.get("normalized_name") or ent.get("name") or name).lower()
         if key not in seen:
             seen.add(key)
             seeds.append(ent)
-
-    for name in _candidate_names(query):
-        if len(seeds) >= _MAX_ENTITIES:
-            break
-        add(name)
-    for r in chunk_results[:3]:
-        if len(seeds) >= _MAX_ENTITIES:
-            break
-        add((r.metadata or {}).get("symbol"))
     return seeds
 
 

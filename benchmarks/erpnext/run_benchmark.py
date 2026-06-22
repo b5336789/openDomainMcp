@@ -74,6 +74,10 @@ def main() -> None:
     ap.add_argument("--top-k", type=int, default=8)
     ap.add_argument("--questions", default=str(HERE / "questions.jsonl"))
     ap.add_argument("--out", default=None, help="Write the full JSON report here")
+    ap.add_argument("--retrieval-from-ask", action="store_true",
+                    help="Score retrieval from the ask path's own citations instead "
+                         "of a separate search_unified call. Needed to see "
+                         "graph-augmented sources, which are appended inside ask().")
     args = ap.parse_args()
 
     qpath = Path(args.questions)
@@ -90,7 +94,9 @@ def main() -> None:
                               mode=settings.search_mode, settings=settings)
 
     def ask(q: str):
-        return answer_question(q, store, settings, top_k=args.top_k)
+        # Pass ctx.graph so graph-augmented retrieval is exercised when
+        # ODM_RETRIEVE_INCLUDE_GRAPH=true (no-op otherwise / NullGraphStore).
+        return answer_question(q, store, settings, top_k=args.top_k, graph=ctx.graph)
 
     # Negative controls ask about modules excluded from the corpus. run_evals
     # only records an answer when expected_answer is set, so it would silently
@@ -100,7 +106,11 @@ def main() -> None:
 
     print(f"Running {len(scored_cases)} scored cases against collection "
           f"'{args.collection}' (top_k={args.top_k})...\n")
-    report = run_evals(scored_cases, retrieve=retrieve, ask=ask)
+    # retrieve=None makes run_evals score retrieval from ask()'s citations, which
+    # include any graph-augmented source; otherwise use the dedicated retriever.
+    report = run_evals(scored_cases,
+                       retrieve=None if args.retrieval_from_ask else retrieve,
+                       ask=ask)
 
     # Per-category aggregation.
     by_cat_ret: dict[str, list[bool]] = defaultdict(list)

@@ -44,13 +44,15 @@ def test_entity_named_in_question_yields_edge_lines():
     assert "calls" in r.text
 
 
-def test_seeds_from_top_chunk_symbols():
+def test_does_not_seed_from_chunk_symbols():
+    # A retrieved chunk's symbol is a graph entity, but the question does NOT
+    # name it. We must NOT fire on that — it adds noise and fires on
+    # out-of-corpus questions whose top chunks happen to carry symbols.
     g = FakeGraph(entities={"set_discount_amount": "Function"},
                   edges={"set_discount_amount": [("uses", "apply_discount_on")]})
-    # question does not name the entity; a retrieved chunk's symbol does
     r = build_graph_context(g, "how is the document discount applied?",
                             [_chunk("set_discount_amount")], Settings())
-    assert r is not None and "apply_discount_on" in r.text
+    assert r is None
 
 
 def test_workflow_query_yields_ordered_steps():
@@ -69,10 +71,19 @@ def test_no_match_returns_none():
     assert build_graph_context(g, "how does payroll withholding work?", [], Settings()) is None
 
 
-def test_stopwords_not_treated_as_entities():
-    g = FakeGraph(entities={"function": "Concept"}, edges={"function": [("rel", "x")]})
-    # 'function'/'which' are stopwords; must not seed even though graph has them
+def test_plain_words_not_treated_as_entities():
+    # plain English words are not identifier-shaped, so they never seed even
+    # when a generic Concept entity by that name exists in the graph
+    g = FakeGraph(entities={"function": "Concept", "value": "Concept"},
+                  edges={"function": [("rel", "x")]})
     assert build_graph_context(g, "which function returns the value?", [], Settings()) is None
+
+
+def test_only_code_symbol_entity_types_seed():
+    # an identifier-shaped token (e.g. the CamelCase project name) that resolves
+    # to a non-code entity type must not seed — only Function/Class/Method do
+    g = FakeGraph(entities={"ERPNext": "module"}, edges={"ERPNext": [("depends_on", "frappe")]})
+    assert build_graph_context(g, "how does ERPNext compute things?", [], Settings()) is None
 
 
 def test_graph_errors_yield_none():
@@ -85,7 +96,7 @@ def test_graph_errors_yield_none():
 
 
 def test_char_cap_respected():
-    edges = {"big": [("calls", f"dst_{i}") for i in range(50)]}
-    g = FakeGraph(entities={"big": "Function"}, edges=edges)
-    r = build_graph_context(g, "what does big call?", [], Settings())
+    edges = {"big_calc": [("calls", f"dst_{i}") for i in range(50)]}
+    g = FakeGraph(entities={"big_calc": "Function"}, edges=edges)
+    r = build_graph_context(g, "what does big_calc call?", [], Settings())
     assert r is not None and len(r.text) <= 1500
