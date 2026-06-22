@@ -215,3 +215,57 @@ def test_format_sources_handles_article_metadata_without_source_key():
     assert "T" in block and "body" in block          # title used as the label
     cites = _citations([r])
     assert cites[0]["type"] == "article" and cites[0]["source"] == "T"
+
+
+def test_graph_source_appended_when_enabled():
+    from opendomainmcp.models import SearchResult
+    from tests.test_graph_context import FakeGraph
+
+    store = _ScoredStore([SearchResult(id="c", text="chunk", score=0.72,
+                                       metadata={"source": "f.py", "symbol": "x"})])
+    g = FakeGraph(entities={"calculate_taxes": "Function"},
+                  edges={"calculate_taxes": [("calls", "adjust_grand_total_for_inclusive_tax")]})
+    settings = Settings(retrieve_include_articles=False, retrieve_include_graph=True)
+    captured = {}
+
+    def synth(model, system, user):
+        captured["user"] = user
+        return "calc calls adjust [2]"
+
+    result = answer_question("what does calculate_taxes call?", store, settings,
+                             synthesize=synth, graph=g)
+    assert "adjust_grand_total_for_inclusive_tax" in captured["user"]  # graph block reached the model
+    types = {c["type"] for c in result["citations"]}
+    assert "graph" in types
+    graph_cite = next(c for c in result["citations"] if c["type"] == "graph")
+    assert graph_cite["symbol"] is None
+
+
+def test_graph_source_absent_when_flag_off():
+    from opendomainmcp.models import SearchResult
+    from tests.test_graph_context import FakeGraph
+
+    store = _ScoredStore([SearchResult(id="c", text="chunk", score=0.72,
+                                       metadata={"source": "f.py", "symbol": "x"})])
+    g = FakeGraph(entities={"calculate_taxes": "Function"},
+                  edges={"calculate_taxes": [("calls", "adjust")]})
+    settings = Settings(retrieve_include_articles=False, retrieve_include_graph=False)
+    result = answer_question("what does calculate_taxes call?", store, settings,
+                             synthesize=lambda *a: "x [1]", graph=g)
+    assert all(c["type"] != "graph" for c in result["citations"])
+
+
+def test_graph_not_consulted_when_floor_refuses():
+    from opendomainmcp.models import SearchResult
+    from tests.test_graph_context import FakeGraph
+
+    store = _ScoredStore([SearchResult(id="c", text="chunk", score=0.40,
+                                       metadata={"source": "f.py"})])
+    g = FakeGraph(entities={"calculate_taxes": "Function"},
+                  edges={"calculate_taxes": [("calls", "adjust")]})
+    settings = Settings(retrieve_include_articles=False, retrieve_include_graph=True,
+                        retrieve_min_score=0.65)
+    called = []
+    result = answer_question("what does calculate_taxes call?", store, settings,
+                             synthesize=lambda *a: called.append(1) or "x", graph=g)
+    assert result["citations"] == [] and not called  # refused before graph
