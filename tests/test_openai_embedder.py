@@ -9,7 +9,9 @@ import types
 
 import pytest
 
-from opendomainmcp.embedding.cloud import OpenAIEmbedder
+from opendomainmcp.config import Settings
+from opendomainmcp.embedding import get_embedder
+from opendomainmcp.embedding.cloud import OpenAIEmbedder, _basic_auth_value
 
 
 def _fake_client(dim, calls=None):
@@ -51,11 +53,6 @@ def test_openai_embedder_known_model_dim_without_calling():
 
     emb = OpenAIEmbedder("text-embedding-3-small", client=Boom())
     assert emb.dim == 1536
-
-
-from opendomainmcp.config import Settings
-from opendomainmcp.embedding import get_embedder
-from opendomainmcp.embedding.cloud import _basic_auth_value
 
 
 def test_basic_auth_value_encodes_user_password():
