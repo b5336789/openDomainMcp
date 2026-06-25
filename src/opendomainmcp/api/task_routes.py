@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from ..context import Context
 from ..tasks.runners import RUNNERS
@@ -12,7 +12,7 @@ from .deps import get_ctx
 
 class TaskCreate(BaseModel):
     type: str
-    params: dict = {}
+    params: dict = Field(default_factory=dict)
 
 
 def _title(type: str, params: dict) -> str:

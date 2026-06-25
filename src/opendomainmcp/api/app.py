@@ -598,7 +598,7 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
             return app.state.context
         cached = app.state.contexts.get(collection)
         if cached is None:
-            cached = app.state.context_factory()
+            cached = app.state.context_factory(collection=collection)
             app.state.contexts[collection] = cached
         return cached
 

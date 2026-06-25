@@ -57,6 +57,11 @@ def test_children_unknown_id_404(client):
     assert tc.get("/api/tasks/zzz/children").status_code == 404
 
 
+def test_cancel_unknown_id_404(client):
+    tc, _, _ = client
+    assert tc.delete("/api/tasks/does-not-exist").status_code == 404
+
+
 def test_clear_finished(client, tmp_path):
     tc, _, _ = client
     src = tmp_path / "c2"
