@@ -5,12 +5,15 @@ stream (that would require a real context / MariaDB). We only assert that the
 mounts exist and that the registry behaves correctly.
 """
 
+from types import SimpleNamespace
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from opendomainmcp.api.mcp_endpoints import mount_mcp_apps, router
+from opendomainmcp.api.mcp_endpoints import _entry, mount_mcp_apps, router
 from opendomainmcp.config import Settings
 from opendomainmcp.context import Context
+from opendomainmcp.publish import PublishDecisionStore
 from opendomainmcp.views import VIEW_NAMES
 
 VIEWS_EXPECTED = ("product", "operations", "developer", "support", "architecture")
@@ -51,6 +54,17 @@ def test_list_endpoints_lists_all_views_unpublished(store, pipeline, fake_graph,
         assert entry["path"] == f"/mcp/{view}"
         assert entry["url"].endswith(f"/mcp/{view}")
         assert entry["url"].startswith("http")
+
+
+def test_publish_state_requires_collection_decision(tmp_path):
+    request = SimpleNamespace(base_url="http://testserver/")
+    decisions = PublishDecisionStore(tmp_path)
+
+    entry = _entry(request, "product", {"product"}, decisions, "other_collection")
+
+    assert entry["published"] is False
+    assert entry["status"] == "unpublished"
+    assert entry["history"] == []
 
 
 def test_publish_requires_override_when_quality_not_ready(

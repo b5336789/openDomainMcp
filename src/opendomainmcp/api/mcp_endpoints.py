@@ -82,7 +82,7 @@ def _endpoint_url(request: Request, view: str) -> str:
 def _entry(
     request: Request,
     view: str,
-    published: set[str],
+    _published: set[str],
     decisions: PublishDecisionStore,
     collection: str,
 ) -> dict:
@@ -90,7 +90,7 @@ def _entry(
     path = _mount_path(view)
     history = decisions.history(collection, view)
     latest = history[0] if history else None
-    is_published = latest["status"] == "published" if latest else view in published
+    is_published = latest["status"] == "published" if latest else False
     return {
         "view": view,
         "title": VIEWS[view].title,
