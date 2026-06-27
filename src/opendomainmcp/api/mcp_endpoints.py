@@ -26,6 +26,7 @@ from ..publish import (
 )
 from ..quality.evidence import compute_quality_evidence
 from ..server import build_view_server
+from ..validation import ValidationStore, summarize_validation
 from ..views import VIEW_NAMES, VIEWS
 from .deps import get_ctx
 
@@ -84,6 +85,7 @@ def _entry(
     view: str,
     _published: set[str],
     decisions: PublishDecisionStore,
+    validation: ValidationStore,
     collection: str,
 ) -> dict:
     """Build the registry entry for a single view."""
@@ -100,6 +102,7 @@ def _entry(
         "url": _endpoint_url(request, view),
         "latest_decision": latest,
         "history": history,
+        "validation": summarize_validation(validation, collection, view),
     }
 
 
@@ -108,9 +111,10 @@ def list_endpoints(request: Request, ctx: Context = Depends(get_ctx)) -> list[di
     """List every view with its mount path, publish state and absolute URL."""
     published = published_set(request.app)
     decisions = PublishDecisionStore(ctx.settings.data_dir)
+    validation = ValidationStore(ctx.settings.data_dir)
     collection = _collection(ctx)
     return [
-        _entry(request, view, published, decisions, collection)
+        _entry(request, view, published, decisions, validation, collection)
         for view in VIEW_NAMES
     ]
 
@@ -143,7 +147,8 @@ def publish_endpoint(
     )
     published = published_set(request.app)
     published.add(body.view)
-    return _entry(request, body.view, published, decisions, collection)
+    validation = ValidationStore(ctx.settings.data_dir)
+    return _entry(request, body.view, published, decisions, validation, collection)
 
 
 @router.delete("/api/mcp/endpoints/{view}")
@@ -169,4 +174,5 @@ def unpublish_endpoint(
             evidence=evidence,
         )
     )
-    return _entry(request, view, published, decisions, collection)
+    validation = ValidationStore(ctx.settings.data_dir)
+    return _entry(request, view, published, decisions, validation, collection)

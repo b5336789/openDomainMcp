@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ..context import Context
+from ..validation import ValidationStore, summarize_validation
 from .readiness import compute_readiness
 
 
@@ -12,6 +13,7 @@ def compute_quality_evidence(ctx: Context, tasks: list[dict] | None = None) -> d
         _articles_card(readiness),
         _retrieval_card(readiness),
         _graph_card(readiness),
+        _simulation_card(ctx, readiness),
         _jobs_card(readiness),
     ]
     return {
@@ -192,6 +194,44 @@ def _graph_card(readiness: dict) -> dict:
     }
 
 
+def _simulation_card(ctx: Context, readiness: dict) -> dict:
+    summary = summarize_validation(
+        ValidationStore(ctx.settings.data_dir),
+        readiness["collection"],
+    )
+    scenarios = int(summary.get("scenario_count") or 0)
+    latest_runs = int(summary.get("latest_run_count") or 0)
+    passed = int(summary.get("passed") or 0)
+    failed = int(summary.get("failed") or 0)
+    if latest_runs == 0:
+        status, score = "validating", 0
+        text = "No validation scenarios have been run."
+        action = "Run validation scenarios in Agent Simulator."
+    elif failed:
+        status, score = "blocked", 0
+        text = _count_label(failed, "validation scenario failed")
+        action = "Inspect failed validation scenarios."
+    else:
+        status = "ready"
+        score = round(float(summary.get("pass_rate") or 0.0) * 100)
+        text = _count_label(passed, "validation scenario passed")
+        action = "Simulation gate is clear."
+    return {
+        "id": "simulation",
+        "gate": "Simulation",
+        "status": status,
+        "score": score,
+        "summary": text,
+        "details": [
+            _plain_count(scenarios, "scenario"),
+            _plain_count(latest_runs, "latest run"),
+            _plain_count(passed, "passed"),
+            _plain_count(failed, "failed"),
+        ],
+        "action": action,
+    }
+
+
 def _jobs_card(readiness: dict) -> dict:
     health = readiness["job_health"]
     queued = int(health.get("queued") or 0)
@@ -253,7 +293,19 @@ def _count_label(count: int, singular: str) -> str:
         return f"1 {singular}."
     if singular == "background job failed":
         return f"{count} background jobs failed."
+    if singular.endswith("failed") or singular.endswith("passed"):
+        base = singular.rsplit(" ", 1)[0]
+        state = singular.rsplit(" ", 1)[1]
+        return f"{count} {base}s {state}."
     return f"{count} {singular}s."
+
+
+def _plain_count(count: int, singular: str) -> str:
+    if singular in {"passed", "failed"}:
+        return f"{count} {singular}"
+    if count == 1:
+        return f"1 {singular}"
+    return f"{count} {singular}s"
 
 
 def _percent(value: float) -> str:
