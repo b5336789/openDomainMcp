@@ -38,6 +38,17 @@ const ENDPOINTS = [
     url: "http://localhost:8000/mcp/product",
     latest_decision: null,
     history: [],
+    validation: {
+      collection: "default",
+      view: "product",
+      status: "passed",
+      scenario_count: 1,
+      latest_run_count: 1,
+      passed: 1,
+      failed: 0,
+      pass_rate: 1,
+      latest_run: null,
+    },
   },
 ];
 
@@ -50,6 +61,17 @@ const PUBLISHED = {
   url: "http://localhost:8000/mcp/product",
   latest_decision: DECISION,
   history: [DECISION],
+  validation: {
+    collection: "default",
+    view: "product",
+    status: "passed",
+    scenario_count: 1,
+    latest_run_count: 1,
+    passed: 1,
+    failed: 0,
+    pass_rate: 1,
+    latest_run: null,
+  },
 };
 
 test.describe("mcp builder", () => {
@@ -83,6 +105,7 @@ test.describe("mcp builder", () => {
       .first();
 
     await expect(row.getByText("unpublished")).toBeVisible();
+    await expect(row.getByText("Validation passed")).toBeVisible();
 
     await row.getByRole("button", { name: "Publish" }).click();
 

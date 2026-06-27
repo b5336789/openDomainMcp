@@ -83,6 +83,49 @@ export interface SimulateResult {
   grounding: { hits: number; avg_score: number; knowledge_types: string[] };
 }
 
+export interface ValidationScenario {
+  id: string;
+  collection: string;
+  view: string;
+  name: string;
+  query: string;
+  created_at: number;
+}
+
+export interface ValidationRun {
+  id: string;
+  scenario_id: string;
+  collection: string;
+  view: string;
+  query: string;
+  status: "passed" | "failed";
+  grounding_hits: number;
+  avg_score: number;
+  tool_results: number;
+  knowledge_types: string[];
+  error: string;
+  created_at: number;
+}
+
+export interface ValidationSummary {
+  collection: string;
+  view: string | null;
+  status: "validating" | "passed" | "failed";
+  scenario_count: number;
+  latest_run_count: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  latest_run: ValidationRun | null;
+}
+
+export interface ValidationRunResponse {
+  scenario: ValidationScenario;
+  run: ValidationRun;
+  result: SimulateResult;
+  summary: ValidationSummary;
+}
+
 // --- Knowledge graph -----------------------------------------------------
 export interface GraphEntity {
   name: string;
@@ -321,6 +364,7 @@ export interface McpEndpoint {
   url: string;
   latest_decision: PublishDecision | null;
   history: PublishDecision[];
+  validation: ValidationSummary;
 }
 
 // Knowledge classification vocabulary, kept in sync with the backend.
@@ -423,6 +467,37 @@ export const api = {
       headers: headers({ "Content-Type": "application/json" }),
       body: JSON.stringify({ view, query, top_k }),
     }).then(json<SimulateResult>),
+
+  validationScenarios: (view?: string) => {
+    const params = new URLSearchParams();
+    if (view) params.set("view", view);
+    const suffix = params.toString() ? `?${params}` : "";
+    return fetch(withCollection(`/api/validation/scenarios${suffix}`), {
+      headers: headers(),
+    }).then(json<ValidationScenario[]>);
+  },
+
+  runValidationScenario: (id: string) =>
+    fetch(withCollection(`/api/validation/scenarios/${encodeURIComponent(id)}/run`), {
+      method: "POST",
+      headers: headers(),
+    }).then(json<ValidationRun>),
+
+  runValidation: (view: string, query: string, name: string, top_k = 5) =>
+    fetch(withCollection("/api/validation/run"), {
+      method: "POST",
+      headers: headers({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ view, query, name, top_k }),
+    }).then(json<ValidationRunResponse>),
+
+  validationSummary: (view?: string) => {
+    const params = new URLSearchParams();
+    if (view) params.set("view", view);
+    const suffix = params.toString() ? `?${params}` : "";
+    return fetch(withCollection(`/api/validation/summary${suffix}`), {
+      headers: headers(),
+    }).then(json<ValidationSummary>);
+  },
 
   deleteItem: (id: string) =>
     fetch(`/api/items/${id}`, { method: "DELETE", headers: headers() }).then(
