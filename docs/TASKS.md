@@ -229,6 +229,18 @@ PRD 範圍內但 Phase 2 尚未補齊的項目。
 
 > **CLI**：`opendomainmcp synthesize [--limit N] [--dry-run]`（按需執行，非擷取階段、無自動排程）。**測試**：`test_synthesis_topics`／`test_synthesis_article_model`／`test_synthesis_articles`／`test_synthesis_llm`／`test_retrieval_unified` 全離線覆蓋。
 
+## ✅ Enterprise Redesign Wave 1（已完成，2026-06-27）
+
+以企業操作台視角重整第一屏工作流：Command Center 作為生命週期總覽，Source Intake 作為來源進場與治理入口，並新增 readiness API 作為前後端共同 contract。設計與計畫見 `docs/superpowers/specs/2026-06-27-enterprise-redesign-blueprint-design.md`、`docs/superpowers/plans/2026-06-27-enterprise-wave-1-command-center.md`。
+
+| # | 狀態 | Effort | 任務 | 內容 | 位置 |
+|---|------|--------|------|------|------|
+| E1.1 | ✅ | Low | Test harness stability | direct pytest launcher、Playwright API mocks、Task Center malformed task list 防禦 | `tests/__init__.py`、`web/tests/helpers/mockApi.ts`、`web/src/components/TaskCenter.tsx` |
+| E1.2 | ✅ | Medium | Workspace readiness summary | readiness service 與 `/api/workspace/readiness`，含 stats/source/review/job/graph health、task degradation、collection filtering | `src/opendomainmcp/quality/readiness.py`、`src/opendomainmcp/api/workspace_routes.py`、`tests/test_workspace_readiness.py` |
+| E1.3 | ✅ | Medium | Command Center | 首頁改為 knowledge base lifecycle/readiness workspace | `web/src/pages/CommandCenter.tsx`、`web/src/api.ts`、`web/src/main.tsx`、`web/src/App.tsx` |
+| E1.4 | ✅ | Medium | Source Intake | `/intake` 來源進場 workspace；保留 `/ingest` alias，整合 path/upload ingest、source registry、delete source | `web/src/pages/SourceIntake.tsx`、`web/tests/source_intake.spec.ts` |
+| E1.5 | ✅ | Low | Wave 1 docs and verification | 紀錄企業重設計 Wave 1 範圍、review gate、驗證結果 | `docs/DEVLOG.md`、`docs/TASKS.md` |
+
 ---
 
 ## 相依性分析（Dependency Analysis）
@@ -338,7 +350,7 @@ flowchart LR
 
 ---
 
-_最後更新：2026-06-21（新增 Phase 6 知識合成與文章系統，PR #20–24 併入 main）_
+_最後更新：2026-06-27（新增 Enterprise Redesign Wave 1：Command Center、Source Intake、workspace readiness）_
 
 > **Phase 3 進展備註（2026-06-19）：** 子專案①（Entity Graph 基礎，4.1/4.2/4.3）已完成併入 main。設計與計畫見 `docs/superpowers/specs/2026-06-19-entity-graph-foundation-design.md` 與 `docs/superpowers/plans/2026-06-19-entity-graph-foundation.md`。
 > - 4.2 圖儲存採 **MariaDB**（全平台必需依賴），向量仍在 Chroma；圖依 collection 隔離。

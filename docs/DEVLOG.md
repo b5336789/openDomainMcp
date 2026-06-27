@@ -171,3 +171,31 @@ commit `df8c9fa`。
 - 合成與檢索全離線測試覆蓋：`test_synthesis_topics`／`test_synthesis_article_model`／`test_synthesis_articles`（含冪等、dry-run、critic 拒絕）／`test_synthesis_llm`／`test_retrieval_unified`。
 - Web E2E（Playwright，API mock）全綠，含新 Articles smoke 與 Dashboard pipeline 斷言。
 - PR #20–24 均已併入 `main`。
+
+---
+
+## 6. 2026-06-27 — Enterprise Redesign Wave 1
+
+依企業技術主管視角完成系統盤點與第一波重設計實作。完整藍圖見
+`docs/superpowers/specs/2026-06-27-enterprise-redesign-blueprint-design.md`，
+Wave 1 實作計畫見 `docs/superpowers/plans/2026-06-27-enterprise-wave-1-command-center.md`。
+
+### 6.1 範圍
+
+- **Command Center**：將首頁改為 knowledge base 生命週期總覽，呈現 readiness score、blockers/warnings、source/review/job/graph health 與下一步動作。
+- **Workspace readiness API**：新增 `/api/workspace/readiness`，由 Chroma stats/source registry、review state、TaskStore、graph availability 彙整企業操作狀態。
+- **Source Intake**：以新 `/intake` workspace 取代舊 Ingest 導覽，保留 `/ingest` legacy route，整合 server path ingest、upload ingest、source registry 與 delete source。
+- **測試穩定化**：修正 direct pytest launcher 對 `tests.conftest` 的 import、Playwright API mocks、Task Center 對 malformed task list 的防禦。
+
+### 6.2 Review Gate 與修正
+
+- Readiness contract 經兩段 review 補齊 `stats`、`source_health`、`review_health.approved_ratio`、zero-filled `job_health`、`graph_health`。
+- 修正 no-approved、rejected、unset、pending、active jobs、failed jobs 的狀態優先序，避免錯誤標示 `ready` 或引導重複 ingest。
+- `/api/workspace/readiness` 改用 app-level `task_store`，依 active collection 篩選；task history 損壞時降級為 failed job signal，而不是 500。
+- 補齊 graph exception、queued/running jobs、task-store list/row conversion failure、`create_app` mounted endpoint 的回歸測試。
+
+### 6.3 驗證
+
+- 後端 focused：`tests/test_workspace_readiness.py` → **20 passed**；`tests/test_integration_wiring.py tests/test_observability.py` → **13 passed**。
+- 前端 focused：`npm run build` 成功；`npm run test:e2e -- tests/source_intake.spec.ts` → **2 passed**；`npm run test:e2e -- tests/smoke.spec.ts` → **3 passed**。
+- Source Intake review：spec pass、quality approved。已知非阻塞風險：focused E2E 未覆蓋 foreground SSE ingest、upload 與 drag/drop；legacy `/#/ingest` alias 不會高亮 `/intake` nav。
