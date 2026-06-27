@@ -2,8 +2,8 @@ import { expect, test } from "@playwright/test";
 import { installApiMocks } from "./helpers/mockApi";
 
 const NAV_LABELS = [
-  "Dashboard",
-  "Ingest",
+  "Command Center",
+  "Source Intake",
   "Explore",
   "Ask",
   "Browse / Edit",
@@ -33,43 +33,34 @@ test.describe("smoke", () => {
     }
   });
 
-  test("pipeline card shows live values from stats/sources/settings", async ({
+  test("renders command center readiness", async ({ page }) => {
+    await page.goto("/");
+
+    await expect(
+      page.getByRole("heading", { name: "Command Center" }),
+    ).toBeVisible();
+    await expect(page.getByText("needs review")).toBeVisible();
+    await expect(page.getByText("72", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Review pending knowledge before publishing MCP views."),
+    ).toBeVisible();
+  });
+
+  test("shows source, review, job, and graph health summaries", async ({
     page,
   }) => {
     await page.goto("/");
 
-    // Scope to the Pipeline card (outer Card uses rounded-xl; stage boxes
-    // use rounded-lg) so the assertions don't collide with the stat cards.
-    const card = page
-      .locator("div.rounded-xl")
-      .filter({ has: page.getByRole("heading", { name: "Pipeline" }) });
-
-    // Each stage reports a real, current value rather than a fixed hint.
-    await expect(card.getByText("2 sources")).toBeVisible(); // load: sources.length
-    await expect(card.getByText("1,234 chunks")).toBeVisible(); // split: stats.count
-    await expect(card.getByText("on", { exact: true })).toBeVisible(); // extract: extract_knowledge
-    await expect(card.getByText("all-MiniLM-L6-v2")).toBeVisible(); // embed: embedder
-    await expect(card.getByText("default", { exact: true })).toBeVisible(); // store: collection
-    await expect(card.getByText("hybrid")).toBeVisible(); // search: search_mode
-  });
-
-  test("dashboard shows stats and the sources section", async ({ page }) => {
-    await page.goto("/");
-
-    // Stat cards from /api/stats. Scope to the stats grid: the same values
-    // now legitimately also appear in the Pipeline card stages.
-    const statsSection = page
-      .locator("section")
-      .filter({ has: page.getByText("Indexed chunks") });
-    await expect(statsSection.getByText("Indexed chunks")).toBeVisible();
-    await expect(statsSection.getByText("1,234", { exact: true })).toBeVisible();
-    await expect(statsSection.getByText("all-MiniLM-L6-v2")).toBeVisible();
-
-    // Sources section from /api/sources.
-    await expect(
-      page.getByRole("heading", { name: /Sources/ }),
-    ).toBeVisible();
-    await expect(page.getByText("docs/deploy.md")).toBeVisible();
-    await expect(page.getByText("runbooks/rollback.md")).toBeVisible();
+    const main = page.locator("main");
+    await expect(main.getByText("Sources", { exact: true })).toBeVisible();
+    await expect(main.getByText("2", { exact: true })).toBeVisible();
+    await expect(main.getByText("60 chunks")).toBeVisible();
+    await expect(main.getByText("Approved", { exact: true })).toBeVisible();
+    await expect(main.getByText("80%")).toBeVisible();
+    await expect(main.getByText("10 pending")).toBeVisible();
+    await expect(main.getByText("Jobs", { exact: true })).toBeVisible();
+    await expect(main.getByText("0 active")).toBeVisible();
+    await expect(main.getByText("Graph", { exact: true })).toBeVisible();
+    await expect(main.getByText("available")).toBeVisible();
   });
 });

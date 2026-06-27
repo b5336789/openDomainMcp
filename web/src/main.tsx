@@ -3,8 +3,8 @@ import ReactDOM from "react-dom/client";
 import { createHashRouter, RouterProvider } from "react-router-dom";
 import { ToastProvider } from "./components/ui";
 import App from "./App";
-import Dashboard from "./pages/Dashboard";
-import Ingest from "./pages/Ingest";
+import CommandCenter from "./pages/CommandCenter";
+import SourceIntake from "./pages/SourceIntake";
 import Explore from "./pages/Explore";
 import Ask from "./pages/Ask";
 import Browse from "./pages/Browse";
@@ -23,8 +23,9 @@ const router = createHashRouter([
     path: "/",
     element: <App />,
     children: [
-      { index: true, element: <Dashboard /> },
-      { path: "ingest", element: <Ingest /> },
+      { index: true, element: <CommandCenter /> },
+      { path: "intake", element: <SourceIntake /> },
+      { path: "ingest", element: <SourceIntake /> },
       { path: "explore", element: <Explore /> },
       { path: "ask", element: <Ask /> },
       { path: "browse", element: <Browse /> },

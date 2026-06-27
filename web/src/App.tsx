@@ -36,8 +36,8 @@ import {
 } from "./components/icons";
 
 const links = [
-  { to: "/", label: "Dashboard", end: true, icon: IconDashboard },
-  { to: "/ingest", label: "Ingest", icon: IconIngest },
+  { to: "/", label: "Command Center", end: true, icon: IconDashboard },
+  { to: "/intake", label: "Source Intake", icon: IconIngest },
   { to: "/explore", label: "Explore", icon: IconExplore },
   { to: "/ask", label: "Ask", icon: IconAsk },
   { to: "/browse", label: "Browse / Edit", icon: IconBrowse },
