@@ -239,3 +239,24 @@ Wave 3A 啟動 publish governance 的第一個可交付切片：不替換既有 
 - 後端全測：`PYTHONPATH=src .venv/bin/python -m pytest -q` → **455 passed, 3 skipped**。
 - 前端 build：`npm run build` 成功，Vite 產出 53 modules。
 - Web E2E：`npm run test:e2e` → **14 passed**。
+
+---
+
+## 9. 2026-06-28 — Enterprise Redesign Wave 4A
+
+Wave 4A 將 Simulator 從一次性試跑工具提升為可重跑的 MCP validation suite。目標是讓 publish governance 不只看靜態品質 evidence，也能看「代表性 agent 任務是否真的能接地並回傳工具結果」。設計與計畫見 `docs/superpowers/specs/2026-06-28-enterprise-wave-4a-validation-suite-design.md`、`docs/superpowers/plans/2026-06-28-enterprise-wave-4a-validation-suite.md`。
+
+### 9.1 範圍
+
+- **Validation scenario store**：新增 `src/opendomainmcp/validation/store.py`，以 `settings.data_dir / "validation_runs.json"` 持久化 scenario 與 run。scenario 依 collection/view 隔離；summary 以每個 scenario 最新一次 run 計算 `passed/failed/pass_rate/status/latest_run`。
+- **Validation API**：新增 `/api/validation/scenarios`、`/api/validation/scenarios/{id}/run`、`/api/validation/run`、`/api/validation/summary`。`/api/validation/run` 會先執行 shared simulator runner，再把結果保存成 scenario + run。
+- **Simulation quality gate**：Quality Evidence 新增 Simulation gate；沒有 run 時維持 `validating`，任一 latest run failed 則阻擋，全部 latest run passed 才計入 ready score。
+- **MCP Publish validation summary**：`/api/mcp/endpoints` 每個 view 回傳 validation summary，前端在 endpoint row 顯示 `Validation passed/failed/validating` 與 passed/failed/scenario count。
+- **Simulator workflow**：Simulator 新增 validation scenarios 區塊，可列出 saved scenarios、保存 current simulation、重跑 scenario，並在 UI 顯示 latest run 狀態。
+
+### 9.2 驗證
+
+- Store focused：`tests/test_validation_store.py` → **8 passed**。
+- API focused：`tests/test_validation_api.py` + validation wiring → **9 passed**。
+- Quality/MCP focused：`tests/test_quality_evidence.py tests/test_mcp_endpoints.py` → **14 passed**。
+- Frontend focused：`npm run build` 成功；`npm run test:e2e -- tests/simulator.spec.ts tests/quality_lab.spec.ts tests/mcp_builder.spec.ts` → **4 passed**。
