@@ -27,6 +27,10 @@ def compute_readiness(ctx: Context, tasks: list[dict] | None = None) -> dict:
         blockers.append(_count_text(jobs["error"], "background job failed"))
     if pending:
         warnings.append(_count_text(pending, "knowledge object is pending review"))
+    if review["rejected"]:
+        warnings.append(_count_text(review["rejected"], "knowledge object was rejected"))
+    if review["unset"]:
+        warnings.append(_count_text(review["unset"], "knowledge object is unreviewed"))
     if total and approved == 0:
         warnings.append("No approved knowledge objects.")
 
@@ -112,6 +116,10 @@ def _count_text(count: int, singular: str) -> str:
         return f"1 {singular}."
     if singular.endswith("is pending review"):
         return f"{count} knowledge objects are pending review."
+    if singular.endswith("was rejected"):
+        return f"{count} knowledge objects were rejected."
+    if singular.endswith("is unreviewed"):
+        return f"{count} knowledge objects are unreviewed."
     if singular == "background job failed":
         return f"{count} background jobs failed."
     return f"{count} {singular}s."
@@ -126,6 +134,8 @@ def _next_action(status: str, blockers: list[str], warnings: list[str]) -> str:
         return "Wait for background jobs to finish."
     if "No approved knowledge objects." in warnings:
         return "Review and approve knowledge objects."
+    if any("rejected" in warning or "unreviewed" in warning for warning in warnings):
+        return "Review rejected or unclassified knowledge objects."
     if "needs_review" == status:
         return "Review pending knowledge objects."
     return "Workspace is ready."

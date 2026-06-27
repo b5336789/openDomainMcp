@@ -190,6 +190,36 @@ def test_collection_with_no_approved_knowledge_needs_review(ctx):
     assert readiness["next_action"] == "Review and approve knowledge objects."
 
 
+def test_mixed_rejected_knowledge_needs_review(ctx):
+    ctx.store.upsert(
+        [
+            _chunk("approved knowledge", "approved.md", "approved"),
+            _chunk("rejected knowledge", "rejected.md", "rejected"),
+        ]
+    )
+
+    readiness = compute_readiness(ctx, tasks=[])
+
+    assert readiness["status"] == "needs_review"
+    assert readiness["warnings"] == ["1 knowledge object was rejected."]
+    assert readiness["next_action"] == "Review rejected or unclassified knowledge objects."
+
+
+def test_mixed_unset_knowledge_needs_review(ctx):
+    ctx.store.upsert(
+        [
+            _chunk("approved knowledge", "approved.md", "approved"),
+            _chunk("unset knowledge", "unset.md", "unset"),
+        ]
+    )
+
+    readiness = compute_readiness(ctx, tasks=[])
+
+    assert readiness["status"] == "needs_review"
+    assert readiness["warnings"] == ["1 knowledge object is unreviewed."]
+    assert readiness["next_action"] == "Review rejected or unclassified knowledge objects."
+
+
 def test_failed_jobs_block_readiness(ctx):
     ctx.store.upsert([_chunk("approved knowledge", "approved.md", "approved")])
 
