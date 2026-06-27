@@ -143,6 +143,45 @@ export interface MetricsView {
   };
 }
 
+export interface KnowledgeBaseReadiness {
+  collection: string;
+  status: "blocked" | "needs_review" | "validating" | "ready" | "published";
+  score: number;
+  next_action: string;
+  blockers: string[];
+  warnings: string[];
+  stats: {
+    count: number;
+    embedder: string;
+    dim: number;
+  };
+  source_health: {
+    sources: number;
+    chunks: number;
+    stale: number;
+    failed: number;
+  };
+  review_health: {
+    approved: number;
+    pending: number;
+    rejected: number;
+    unset: number;
+    approved_ratio: number;
+  };
+  job_health: {
+    queued: number;
+    running: number;
+    done: number;
+    error: number;
+    cancelled: number;
+  };
+  graph_health: {
+    available: boolean;
+    entities: number;
+    workflows: number;
+  };
+}
+
 // --- Pre-Execution Advisor ----------------------------------------------
 export interface AdviseResult {
   action: string;
@@ -396,6 +435,11 @@ export const api = {
 
   // -- metrics ------------------------------------------------------------
   metrics: () => fetch(withCollection("/api/metrics"), { headers: headers() }).then(json<MetricsView>),
+
+  workspaceReadiness: () =>
+    fetch(withCollection("/api/workspace/readiness"), { headers: headers() }).then(
+      json<KnowledgeBaseReadiness>
+    ),
 
   // -- pre-execution advisor ---------------------------------------------
   advise: (action: string, top_k = 5) =>
