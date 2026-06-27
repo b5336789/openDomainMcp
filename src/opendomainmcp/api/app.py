@@ -30,7 +30,7 @@ from . import (
 )
 from .task_routes import register_task_routes
 from .auth import auth_dependency, require_view_access
-from .deps import get_ctx
+from .deps import get_ctx, get_or_create_context
 from .observability import RequestLoggingMiddleware, health_payload, setup_logging
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -98,6 +98,7 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
     app.add_middleware(RequestLoggingMiddleware)
     app.state.context = context          # pinned single context (tests / single use)
     app.state.contexts = {}              # per-collection cache (real multi-collection)
+    app.state.contexts_lock = threading.Lock()
     app.state.context_factory = context_factory
 
     # -- status & search ------------------------------------------------
@@ -604,11 +605,7 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
         # context (tests) ignores the collection; otherwise build per collection.
         if app.state.context is not None:
             return app.state.context
-        cached = app.state.contexts.get(collection)
-        if cached is None:
-            cached = app.state.context_factory(collection=collection)
-            app.state.contexts[collection] = cached
-        return cached
+        return get_or_create_context(app.state, collection)
 
     register_task_routes(app, _resolve_ctx)
 
