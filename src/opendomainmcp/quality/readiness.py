@@ -4,15 +4,16 @@ from collections import Counter
 
 from ..context import Context
 
+JOB_STATUSES = ("queued", "running", "done", "error", "cancelled")
+REVIEW_STATUSES = ("approved", "pending", "rejected", "unset")
+
 
 def compute_readiness(ctx: Context, tasks: list[dict] | None = None) -> dict:
     stats = ctx.store.stats()
     total = int(stats.get("count") or 0)
-    items = ctx.store.get_items(limit=max(total, 1)) if total else []
     sources = ctx.store.list_sources()
-    review = Counter((item.get("metadata") or {}).get("review_status") or "unset"
-                     for item in items)
-    jobs = Counter((task or {}).get("status") or "unknown" for task in (tasks or []))
+    review = _review_counts(sources, total)
+    jobs = _job_counts(tasks or [])
 
     approved = review["approved"]
     pending = review["pending"]
@@ -26,33 +27,83 @@ def compute_readiness(ctx: Context, tasks: list[dict] | None = None) -> dict:
         blockers.append(_count_text(jobs["error"], "background job failed"))
     if pending:
         warnings.append(_count_text(pending, "knowledge object is pending review"))
+    if total and approved == 0:
+        warnings.append("No approved knowledge objects.")
 
     if blockers:
         status = "blocked"
+    elif jobs["queued"] or jobs["running"]:
+        status = "validating"
     elif warnings:
         status = "needs_review"
     else:
         status = "ready"
 
     return {
-        "collection": stats.get("collection"),
+        "collection": stats.get("collection") or "",
         "status": status,
         "score": 0 if blockers else round(approved_ratio * 100),
-        "approved_ratio": approved_ratio,
+        "next_action": _next_action(status, blockers, warnings),
         "blockers": blockers,
         "warnings": warnings,
-        "next_action": _next_action(status, blockers),
+        "stats": {
+            "count": total,
+            "embedder": stats.get("embedder"),
+            "dim": int(stats.get("dim") or 0),
+        },
         "source_health": {
             "sources": len(sources),
             "chunks": total,
+            "stale": _sum_source_flag(sources, "stale"),
+            "failed": _sum_source_flag(sources, "failed"),
         },
         "review_health": {
             "approved": approved,
             "pending": pending,
             "rejected": review["rejected"],
             "unset": review["unset"],
+            "approved_ratio": approved_ratio,
         },
-        "job_health": dict(sorted(jobs.items())),
+        "job_health": {status: jobs[status] for status in JOB_STATUSES},
+        "graph_health": _graph_health(ctx),
+    }
+
+
+def _review_counts(sources: list[dict], total: int) -> Counter:
+    review: Counter = Counter()
+    for source in sources:
+        buckets = source.get("review") or {}
+        for status in REVIEW_STATUSES:
+            review[status] += int(buckets.get(status) or 0)
+    counted = sum(review[status] for status in REVIEW_STATUSES)
+    if total > counted:
+        review["unset"] += total - counted
+    return review
+
+
+def _job_counts(tasks: list[dict]) -> Counter:
+    jobs: Counter = Counter({status: 0 for status in JOB_STATUSES})
+    for task in tasks:
+        status = (task or {}).get("status")
+        if status in JOB_STATUSES:
+            jobs[status] += 1
+    return jobs
+
+
+def _sum_source_flag(sources: list[dict], key: str) -> int:
+    return sum(int(source.get(key) or 0) for source in sources)
+
+
+def _graph_health(ctx: Context) -> dict:
+    try:
+        entities = ctx.graph.list_entities(limit=500) or []
+        workflows = ctx.graph.list_workflows(limit=500) or []
+    except Exception:  # noqa: BLE001 - readiness should degrade if graph is down
+        return {"available": False, "entities": 0, "workflows": 0}
+    return {
+        "available": True,
+        "entities": len(entities),
+        "workflows": len(workflows),
     }
 
 
@@ -64,11 +115,15 @@ def _count_text(count: int, singular: str) -> str:
     return f"{count} {singular}s."
 
 
-def _next_action(status: str, blockers: list[str]) -> str:
+def _next_action(status: str, blockers: list[str], warnings: list[str]) -> str:
     if "No indexed knowledge objects." in blockers:
         return "Add sources in Source Intake."
     if "blocked" == status:
         return "Inspect failed background jobs."
+    if "validating" == status:
+        return "Wait for background jobs to finish."
+    if "No approved knowledge objects." in warnings:
+        return "Review and approve knowledge objects."
     if "needs_review" == status:
         return "Review pending knowledge objects."
     return "Workspace is ready."
