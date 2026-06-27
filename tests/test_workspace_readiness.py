@@ -207,6 +207,17 @@ def test_failed_jobs_block_readiness(ctx):
     assert readiness["blockers"] == ["1 background job failed."]
 
 
+def test_multiple_failed_jobs_use_plural_blocker_text(ctx):
+    ctx.store.upsert([_chunk("approved knowledge", "approved.md", "approved")])
+
+    readiness = compute_readiness(
+        ctx,
+        tasks=[{"status": "error"}, {"status": "error"}],
+    )
+
+    assert readiness["blockers"] == ["2 background jobs failed."]
+
+
 def test_workspace_readiness_endpoint_returns_context_summary(ctx):
     app = FastAPI()
     app.state.context = ctx

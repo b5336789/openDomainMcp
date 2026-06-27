@@ -112,6 +112,8 @@ def _count_text(count: int, singular: str) -> str:
         return f"1 {singular}."
     if singular.endswith("is pending review"):
         return f"{count} knowledge objects are pending review."
+    if singular == "background job failed":
+        return f"{count} background jobs failed."
     return f"{count} {singular}s."
 
 
