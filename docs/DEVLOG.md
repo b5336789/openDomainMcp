@@ -199,3 +199,22 @@ Wave 1 實作計畫見 `docs/superpowers/plans/2026-06-27-enterprise-wave-1-comm
 - 後端 focused：`tests/test_workspace_readiness.py` → **20 passed**；`tests/test_integration_wiring.py tests/test_observability.py` → **13 passed**。
 - 前端 focused：`npm run build` 成功；`npm run test:e2e -- tests/source_intake.spec.ts` → **2 passed**；`npm run test:e2e -- tests/smoke.spec.ts` → **3 passed**。
 - Source Intake review：spec pass、quality approved。已知非阻塞風險：focused E2E 未覆蓋 foreground SSE ingest、upload 與 drag/drop；legacy `/#/ingest` alias 不會高亮 `/intake` nav。
+
+---
+
+## 7. 2026-06-27 — Enterprise Redesign Wave 2A
+
+Wave 2A 承接企業重設計藍圖的「Quality Lab And Readiness Gates」，先建立可量測的品質證據層，不提前引入 publish override / audit decision 的重治理。設計與計畫見 `docs/superpowers/specs/2026-06-27-enterprise-wave-2a-quality-lab-design.md`、`docs/superpowers/plans/2026-06-27-enterprise-wave-2a-quality-lab.md`。
+
+### 7.1 範圍
+
+- **Readiness health 擴充**：`/api/workspace/readiness` 新增 `article_health` 與 `retrieval_health`，在沒有文章或 metrics 時維持 zero-filled contract。
+- **Quality Evidence API**：新增 `/api/quality/evidence`，將 Coverage、Review、Articles、Retrieval、Graph、Jobs 六個 gate 彙整成穩定 evidence cards。
+- **Quality Lab workspace**：新增 `/quality` 前端工作區，呈現 evidence score、gate 狀態、details、action 與跨工作區捷徑。
+- **Knowledge Review article curation**：Review 頁新增 Article Curation 旁欄，列出 synthesized articles、relevance、cross-validation、source count，並可排程 synthesis task。
+
+### 7.2 驗證
+
+- 後端 focused：`tests/test_workspace_readiness.py tests/test_quality_evidence.py` → **23 passed**。
+- 前端 focused：`npm run test:e2e -- tests/quality_lab.spec.ts` → **1 passed**；`npm run test:e2e -- tests/review.spec.ts tests/quality_lab.spec.ts` → **2 passed**；`npm run test:e2e -- tests/smoke.spec.ts` → **3 passed**。
+- Frontend build：`npm run build` 成功，Vite 產出 53 modules。
