@@ -144,4 +144,24 @@ test.describe("mcp builder", () => {
       row.getByRole("button", { name: "Unpublish" }),
     ).toBeVisible();
   });
+
+  test("refreshes publish readiness after saving retrieval policy", async ({
+    page,
+  }) => {
+    await page.goto("/#/mcp");
+
+    await expect(
+      page.getByText("Published MCP views use approved-only hybrid retrieval."),
+    ).toBeVisible();
+
+    const refreshedQuality = page.waitForRequest(
+      (request) =>
+        request.method() === "GET" &&
+        new URL(request.url()).pathname === "/api/quality/evidence",
+      { timeout: 3000 },
+    );
+    await page.getByRole("button", { name: "Save policy" }).click();
+
+    await refreshedQuality;
+  });
 });
