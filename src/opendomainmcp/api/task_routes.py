@@ -56,7 +56,12 @@ def register_task_routes(app, resolve_ctx) -> None:
 
     @app.get("/api/tasks")
     def list_tasks(ctx: Context = Depends(get_ctx)):
-        return {"tasks": [t.to_dict() for t in _store(ctx).list()]}
+        store = _store(ctx)
+        if getattr(app.state, "task_worker", None) is None:
+            store.recover_running()
+        payload = {"tasks": [t.to_dict() for t in store.list()]}
+        _worker(ctx).wake()
+        return payload
 
     @app.get("/api/tasks/{task_id}/children")
     def task_children(task_id: str, offset: int = 0, limit: int = 100,

@@ -20,6 +20,7 @@ def _task_rows(ctx: Context, app_state=None) -> list[dict]:
     try:
         if store is None:
             store = TaskStore(ctx.settings.data_dir)
+            store.recover_running()
         tasks = store.list()
     except Exception:  # noqa: BLE001 - readiness should degrade on bad task history
         return [{"status": "error"}]

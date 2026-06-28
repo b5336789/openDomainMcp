@@ -118,16 +118,33 @@ class TaskStore:
             t = self._tasks.get(task_id)
             if t is None or t.status != JOB_RUNNING:
                 return False
-            t.status = JOB_QUEUED
-            t.cancel_requested = False
-            t.started_at = None
-            t.finished_at = None
-            t.recovery_count += 1
-            t.recovered_at = time.time()
-            t.last_transition = "recovered_running_to_queued"
+            self._apply_recovered(t, time.time())
             self._last_write[task_id] = (time.time(), t.done)
             self._persist()
             return True
+
+    def recover_running(self) -> int:
+        with self._lock:
+            now = time.time()
+            count = 0
+            for t in self._tasks.values():
+                if t.status != JOB_RUNNING:
+                    continue
+                self._apply_recovered(t, now)
+                self._last_write[t.id] = (now, t.done)
+                count += 1
+            if count:
+                self._persist()
+            return count
+
+    def _apply_recovered(self, t: Task, recovered_at: float) -> None:
+        t.status = JOB_QUEUED
+        t.cancel_requested = False
+        t.started_at = None
+        t.finished_at = None
+        t.recovery_count += 1
+        t.recovered_at = recovered_at
+        t.last_transition = "recovered_running_to_queued"
 
     def retry(self, task_id: str) -> Task:
         with self._lock:

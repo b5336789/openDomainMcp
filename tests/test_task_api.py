@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from opendomainmcp.api.app import create_app
 from opendomainmcp.config import Settings
 from opendomainmcp.context import Context
+from opendomainmcp.tasks.store import TaskStore
 
 
 @pytest.fixture
@@ -119,3 +120,20 @@ def test_retry_non_retryable_task_is_409(client):
     resp = tc.post(f"/api/tasks/{queued.id}/retry")
 
     assert resp.status_code == 409
+
+
+def test_list_tasks_recovers_persisted_running_task(client):
+    tc, ctx, tmp_path = client
+    store = TaskStore(tmp_path)
+    stale = store.create("ingest", "Interrupted ingest", ctx.store.stats()["collection"], {"path": "/src"})
+    store.update(stale.id, status="running", cancel_requested=True)
+
+    resp = tc.get("/api/tasks")
+
+    assert resp.status_code == 200
+    row = next(task for task in resp.json()["tasks"] if task["id"] == stale.id)
+    assert row["status"] == "queued"
+    assert row["cancel_requested"] is False
+    assert row["recovery_count"] == 1
+    assert row["recovered_at"] is not None
+    assert row["last_transition"] == "recovered_running_to_queued"

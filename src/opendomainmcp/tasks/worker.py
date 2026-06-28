@@ -6,6 +6,13 @@ import time
 from .models import JOB_CANCELLED, JOB_DONE, JOB_ERROR, JOB_RUNNING
 
 
+def _cancelled_result() -> dict:
+    return {
+        "status": JOB_CANCELLED,
+        "message": "Task cancelled by request.",
+    }
+
+
 class TaskWorker:
     def __init__(self, store, run_one):
         self._store = store
@@ -15,9 +22,7 @@ class TaskWorker:
         self._thread: threading.Thread | None = None
 
     def recover(self) -> None:
-        for t in self._store.list():
-            if t.status == JOB_RUNNING:
-                self._store.mark_recovered(t.id)
+        self._store.recover_running()
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -45,6 +50,11 @@ class TaskWorker:
             self._run(task)
 
     def _run(self, task) -> None:
+        current = self._store.get(task.id)
+        if current is not None and current.cancel_requested:
+            self._store.transition(task.id, JOB_CANCELLED, result=_cancelled_result())
+            return
+
         self._store.transition(
             task.id,
             JOB_RUNNING,
@@ -66,10 +76,7 @@ class TaskWorker:
                 self._store.transition(
                     task.id,
                     JOB_CANCELLED,
-                    result={
-                        "status": JOB_CANCELLED,
-                        "message": "Task cancelled by request.",
-                    },
+                    result=_cancelled_result(),
                 )
             else:
                 self._store.transition(task.id, JOB_DONE)
