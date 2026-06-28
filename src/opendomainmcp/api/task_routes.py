@@ -73,6 +73,19 @@ def register_task_routes(app, resolve_ctx) -> None:
             raise HTTPException(status_code=404, detail=f"unknown task {task_id}")
         return {"cancelled": store.request_cancel(task_id)}
 
+    @app.post("/api/tasks/{task_id}/retry")
+    def retry_task(task_id: str, ctx: Context = Depends(get_ctx)):
+        store = _store(ctx)
+        try:
+            retry = store.retry(task_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"unknown task {task_id}") from None
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        payload = retry.to_dict()
+        _worker(ctx).wake()
+        return payload
+
     @app.post("/api/tasks/clear")
     def clear_tasks(ctx: Context = Depends(get_ctx)):
         return {"cleared": _store(ctx).clear_finished()}
