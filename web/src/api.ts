@@ -304,7 +304,13 @@ export interface TaskItem {
   done: number;
   failures: { name: string; status: string }[];
   error: string | null;
+  error_type?: string | null;
+  error_message?: string | null;
   result: Record<string, unknown> | null;
+  attempts?: number;
+  recovered_at?: number | null;
+  recovery_count?: number;
+  last_transition?: string | null;
 }
 
 export interface TaskList { tasks: TaskItem[]; }
@@ -669,6 +675,12 @@ export const api = {
       method: "DELETE",
       headers: headers(),
     }).then(json<{ cancelled: boolean }>),
+
+  retryTask: (id: string) =>
+    fetch(withCollection(`/api/tasks/${encodeURIComponent(id)}/retry`), {
+      method: "POST",
+      headers: headers(),
+    }).then(json<TaskItem>),
 
   clearTasks: () =>
     fetch(withCollection("/api/tasks/clear"), {
