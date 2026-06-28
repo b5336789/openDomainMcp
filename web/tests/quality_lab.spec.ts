@@ -53,6 +53,15 @@ const QUALITY_EVIDENCE = {
       action: "Graph evidence is ready.",
     },
     {
+      id: "simulation",
+      gate: "Simulation",
+      status: "validating",
+      score: 0,
+      summary: "No validation scenarios have been run.",
+      details: ["0 scenarios", "0 latest runs", "0 passed", "0 failed"],
+      action: "Run validation scenarios in Agent Simulator.",
+    },
+    {
       id: "jobs",
       gate: "Jobs",
       status: "ready",
@@ -88,6 +97,7 @@ test.describe("quality lab", () => {
       "Articles",
       "Retrieval",
       "Graph",
+      "Simulation",
       "Jobs",
     ]) {
       await expect(page.getByRole("heading", { name: gate })).toBeVisible();

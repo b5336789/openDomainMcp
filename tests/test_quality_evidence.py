@@ -50,6 +50,7 @@ def test_quality_evidence_returns_gate_cards_for_empty_collection(
         "articles",
         "retrieval",
         "graph",
+        "simulation",
         "jobs",
     ]
     assert _card(payload, "coverage") == {
@@ -65,6 +66,15 @@ def test_quality_evidence_returns_gate_cards_for_empty_collection(
     assert _card(payload, "articles")["summary"] == "No synthesized articles."
     assert _card(payload, "retrieval")["status"] == "validating"
     assert _card(payload, "retrieval")["summary"] == "No retrieval evidence recorded."
+    assert _card(payload, "simulation") == {
+        "id": "simulation",
+        "gate": "Simulation",
+        "status": "validating",
+        "score": 0,
+        "summary": "No validation scenarios have been run.",
+        "details": ["0 scenarios", "0 latest runs", "0 passed", "0 failed"],
+        "action": "Run validation scenarios in Agent Simulator.",
+    }
 
 
 def test_quality_evidence_summarizes_review_articles_retrieval_and_graph(
@@ -112,7 +122,7 @@ def test_quality_evidence_summarizes_review_articles_retrieval_and_graph(
 
     payload = compute_quality_evidence(ctx, tasks=[{"status": "done"}])
 
-    assert payload["status"] == "needs_review"
+    assert payload["status"] == "validating"
     assert _card(payload, "coverage")["status"] == "ready"
     assert _card(payload, "review") == {
         "id": "review",
@@ -158,9 +168,82 @@ def test_quality_evidence_top_level_status_reflects_unready_gates(
     assert _card(payload, "articles")["status"] == "needs_review"
     assert _card(payload, "retrieval")["status"] == "validating"
     assert _card(payload, "graph")["status"] == "needs_review"
+    assert _card(payload, "simulation")["status"] == "validating"
     assert payload["status"] == "validating"
-    assert payload["score"] == 58
+    assert payload["score"] == 50
     assert payload["next_action"] == "Run Advisor or Simulator scenarios."
+
+
+def test_quality_evidence_summarizes_validation_runs(
+    store, pipeline, fake_graph, tmp_path
+):
+    from opendomainmcp.validation import ValidationStore, build_run, build_scenario
+
+    ctx = _ctx(store, pipeline, fake_graph, tmp_path)
+    scenario = build_scenario(
+        collection=store.stats()["collection"],
+        view="product",
+        name="Rollback",
+        query="rollback",
+    )
+    validation = ValidationStore(tmp_path)
+    validation.append_scenario(scenario)
+    validation.append_run(
+        build_run(
+            collection=store.stats()["collection"],
+            scenario=scenario,
+            result={
+                "view": "product",
+                "grounding": {
+                    "hits": 2,
+                    "avg_score": 0.8,
+                    "knowledge_types": ["Runbook"],
+                },
+                "tools": [{"tool": "search_features", "results": [{"id": "1"}]}],
+            },
+        )
+    )
+
+    payload = compute_quality_evidence(ctx, tasks=[])
+
+    assert _card(payload, "simulation") == {
+        "id": "simulation",
+        "gate": "Simulation",
+        "status": "ready",
+        "score": 100,
+        "summary": "1 validation scenario passed.",
+        "details": ["1 scenario", "1 latest run", "1 passed", "0 failed"],
+        "action": "Simulation gate is clear.",
+    }
+
+
+def test_quality_evidence_blocks_on_failed_validation_run(
+    store, pipeline, fake_graph, tmp_path
+):
+    from opendomainmcp.validation import ValidationStore, build_run, build_scenario
+
+    ctx = _ctx(store, pipeline, fake_graph, tmp_path)
+    scenario = build_scenario(
+        collection=store.stats()["collection"],
+        view="product",
+        name="Rollback",
+        query="rollback",
+    )
+    validation = ValidationStore(tmp_path)
+    validation.append_scenario(scenario)
+    validation.append_run(
+        build_run(
+            collection=store.stats()["collection"],
+            scenario=scenario,
+            result={"view": "product", "grounding": {"hits": 0}, "tools": []},
+        )
+    )
+
+    payload = compute_quality_evidence(ctx, tasks=[])
+
+    assert _card(payload, "simulation")["status"] == "blocked"
+    assert _card(payload, "simulation")["summary"] == "1 validation scenario failed."
+    assert payload["status"] == "blocked"
 
 
 def test_quality_evidence_api_contract(store, pipeline, fake_graph, tmp_path):

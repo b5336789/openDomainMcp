@@ -23,6 +23,7 @@
 | Enterprise Redesign Wave 1 | 5 | 5 ✅ |
 | Enterprise Redesign Wave 2A | 5 | 5 ✅ |
 | Enterprise Redesign Wave 3A | 4 | 4 ✅ |
+| Enterprise Redesign Wave 4A | 5 | 5 ✅ |
 
 > **2026-06-19 衝刺：PRD 全功能完成。** 所有先前 ⬜ 任務（3.2/3.3/3.6、4.4/4.5/4.8、
 > 5.1/5.2/5.3/5.5/5.6/5.7、6.1/6.2/6.3/6.4/6.5/6.7）已於本輪以三個並行 wave 完成並併入，
@@ -273,6 +274,20 @@ PRD 範圍內但 Phase 2 尚未補齊的項目。
 
 ---
 
+## ✅ Enterprise Redesign Wave 4A（已完成，2026-06-28）
+
+建立 MCP Publish 前的可重跑 validation scenario suite：Simulator 的一次任務模擬可保存為驗證情境，後端持久化每次 pass/fail run，Quality Lab 將其納入 Simulation gate，MCP Publish 每個 endpoint 直接顯示 validation summary。設計與計畫見 `docs/superpowers/specs/2026-06-28-enterprise-wave-4a-validation-suite-design.md`、`docs/superpowers/plans/2026-06-28-enterprise-wave-4a-validation-suite.md`。
+
+| # | 狀態 | Effort | 任務 | 內容 | 位置 |
+|---|------|--------|------|------|------|
+| E4A.1 | ✅ | Low | Validation scenario store | file-backed `validation_runs.json`，支援 collection/view 過濾、scenario/run append、latest-run summary 與 corrupt file fail-loud | `src/opendomainmcp/validation/store.py`、`tests/test_validation_store.py` |
+| E4A.2 | ✅ | Medium | Validation API and shared simulator runner | `/api/validation/scenarios`、`/run`、`/summary`，並把 `/api/simulate` 的執行邏輯抽成 shared runner | `src/opendomainmcp/api/simulation.py`、`src/opendomainmcp/api/validation_routes.py`、`src/opendomainmcp/api/app.py`、`tests/test_validation_api.py` |
+| E4A.3 | ✅ | Medium | Simulation quality gate | Quality Evidence 新增 Simulation gate；MCP endpoint rows 回傳 per-view validation summary | `src/opendomainmcp/quality/evidence.py`、`src/opendomainmcp/api/mcp_endpoints.py`、`tests/test_quality_evidence.py`、`tests/test_mcp_endpoints.py` |
+| E4A.4 | ✅ | Medium | Simulator validation workflow | Simulator 顯示 saved scenarios、可把 current simulation 儲存並 rerun；MCP Publish 顯示 validation passed/failed/scenario count | `web/src/pages/Simulator.tsx`、`web/src/pages/McpBuilder.tsx`、`web/src/api.ts`、`web/tests/simulator.spec.ts`、`web/tests/mcp_builder.spec.ts` |
+| E4A.5 | ✅ | Low | Wave 4A docs and verification | 紀錄 validation suite 範圍與完整驗證結果，重新生成 docs HTML | `docs/DEVLOG.md`、`docs/TASKS.md`、`docs/*.html` |
+
+---
+
 ## 相依性分析（Dependency Analysis）
 
 > 針對所有 ⬜ 未完成任務（30 項），分析彼此的前置相依，標出**可立即啟動**（無未完成前置）與**須等待**的任務，作為並行開發排程依據。
@@ -380,7 +395,7 @@ flowchart LR
 
 ---
 
-_最後更新：2026-06-27（新增 Enterprise Redesign Wave 3A：MCP Publish Governance）_
+_最後更新：2026-06-28（新增 Enterprise Redesign Wave 4A：Validation Scenario Suite）_
 
 > **Phase 3 進展備註（2026-06-19）：** 子專案①（Entity Graph 基礎，4.1/4.2/4.3）已完成併入 main。設計與計畫見 `docs/superpowers/specs/2026-06-19-entity-graph-foundation-design.md` 與 `docs/superpowers/plans/2026-06-19-entity-graph-foundation.md`。
 > - 4.2 圖儲存採 **MariaDB**（全平台必需依賴），向量仍在 Chroma；圖依 collection 隔離。

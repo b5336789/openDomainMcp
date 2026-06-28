@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
-import { api, SimulateResult, ViewsMap } from "../api";
+import {
+  api,
+  SimulateResult,
+  ValidationRun,
+  ValidationScenario,
+  ViewsMap,
+} from "../api";
 import {
   Badge,
   Button,
   Card,
   EmptyState,
+  Input,
   Label,
   PageHeader,
   Select,
@@ -19,11 +26,37 @@ export default function Simulator() {
   const [task, setTask] = useState("");
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<SimulateResult | null>(null);
+  const [scenarios, setScenarios] = useState<ValidationScenario[]>([]);
+  const [scenarioRuns, setScenarioRuns] = useState<Record<string, ValidationRun>>({});
+  const [scenarioName, setScenarioName] = useState("");
+  const [savingScenario, setSavingScenario] = useState(false);
+  const [runningScenario, setRunningScenario] = useState<string | null>(null);
   const toast = useToast();
 
   useEffect(() => {
     api.views().then(setViews).catch((e) => toast.show(String(e), "red"));
+    void loadScenarios();
   }, []);
+
+  async function loadScenarios(selectedView = view) {
+    try {
+      const items = await api.validationScenarios(selectedView);
+      setScenarios(items);
+      setScenarioRuns((prev) => {
+        const next = { ...prev };
+        for (const scenario of items) {
+          if (scenario.latest_run) {
+            next[scenario.id] = scenario.latest_run;
+          } else {
+            delete next[scenario.id];
+          }
+        }
+        return next;
+      });
+    } catch (e) {
+      toast.show(String(e), "red");
+    }
+  }
 
   async function run() {
     if (!task.trim()) return;
@@ -35,6 +68,40 @@ export default function Simulator() {
       toast.show(String(e), "red");
     } finally {
       setRunning(false);
+    }
+  }
+
+  async function saveScenario() {
+    if (!result || !scenarioName.trim() || !task.trim()) return;
+    setSavingScenario(true);
+    try {
+      const payload = await api.runValidation(view, task.trim(), scenarioName.trim());
+      if (payload.result) {
+        setResult(payload.result);
+      }
+      setScenarios((prev) => {
+        const without = prev.filter((scenario) => scenario.id !== payload.scenario.id);
+        return [payload.scenario, ...without];
+      });
+      setScenarioRuns((prev) => ({ ...prev, [payload.scenario.id]: payload.run }));
+      toast.show("Validation scenario saved", "green");
+    } catch (e) {
+      toast.show(String(e), "red");
+    } finally {
+      setSavingScenario(false);
+    }
+  }
+
+  async function runSavedScenario(scenario: ValidationScenario) {
+    setRunningScenario(scenario.id);
+    try {
+      const run = await api.runValidationScenario(scenario.id);
+      setScenarioRuns((prev) => ({ ...prev, [scenario.id]: run }));
+      toast.show(`Scenario ${run.status}`, run.status === "passed" ? "green" : "red");
+    } catch (e) {
+      toast.show(String(e), "red");
+    } finally {
+      setRunningScenario(null);
     }
   }
 
@@ -62,7 +129,10 @@ export default function Simulator() {
             <Select
               className="mt-1.5"
               value={view}
-              onChange={(e) => setView(e.target.value)}
+              onChange={(e) => {
+                setView(e.target.value);
+                void loadScenarios(e.target.value);
+              }}
             >
               {views &&
                 Object.entries(views).map(([name, spec]) => (
@@ -80,8 +150,87 @@ export default function Simulator() {
         </div>
       </Card>
 
+      <Card className="space-y-3 p-5">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            Validation scenarios
+          </h3>
+          <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+            Save representative tasks and rerun them before publishing this MCP view.
+          </p>
+        </div>
+        {scenarios.length === 0 ? (
+          <EmptyState
+            icon={<IconSimulator className="h-6 w-6" />}
+            title="No validation scenarios"
+            hint="Run a simulation, name it, and save it as a reusable validation scenario."
+          />
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-slate-800">
+            {scenarios.map((scenario) => {
+              const run = scenarioRuns[scenario.id];
+              return (
+                <div
+                  key={scenario.id}
+                  className="flex flex-wrap items-center gap-3 py-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-slate-900 dark:text-white">
+                      {scenario.name}
+                    </div>
+                    <div className="truncate text-xs text-slate-400">
+                      {scenario.query}
+                    </div>
+                    {run && (
+                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        latest {run.status} · {run.grounding_hits} hits
+                      </div>
+                    )}
+                  </div>
+                  {run && (
+                    <Badge tone={run.status === "passed" ? "green" : "red"}>
+                      {run.status}
+                    </Badge>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={runningScenario === scenario.id}
+                    disabled={runningScenario === scenario.id}
+                    onClick={() => void runSavedScenario(scenario)}
+                  >
+                    Run scenario {scenario.name}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
       {result && (
         <>
+          <Card className="space-y-3 p-4">
+            <Label>
+              Scenario name
+              <Input
+                className="mt-1.5"
+                value={scenarioName}
+                onChange={(e) => setScenarioName(e.target.value)}
+                placeholder="e.g. Rollback guidance"
+              />
+            </Label>
+            <div className="flex justify-end">
+              <Button
+                onClick={saveScenario}
+                loading={savingScenario}
+                disabled={!scenarioName.trim()}
+              >
+                Save validation scenario
+              </Button>
+            </div>
+          </Card>
+
           <Card className="flex flex-wrap items-center gap-x-6 gap-y-2 p-4">
             <Stat label="Context hits" value={String(result.grounding.hits)} />
             <Stat label="Avg score" value={result.grounding.avg_score.toFixed(3)} />

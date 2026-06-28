@@ -26,6 +26,7 @@ from . import (
     mcp_endpoints,
     quality_routes,
     source_routes,
+    validation_routes,
     workspace_routes,
 )
 from .task_routes import register_task_routes
@@ -510,35 +511,16 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
     @app.post("/api/simulate")
     def simulate(req: SimulateRequest, ctx: Context = Depends(get_ctx),
                  principal: dict = Depends(auth_dependency)):
-        from ..views import VIEWS, run_view_tool
+        from .simulation import run_simulation, unique_simulation_results
 
-        spec = VIEWS.get(req.view)
-        if spec is None:
-            raise HTTPException(status_code=404, detail=f"unknown view {req.view!r}")
         # RBAC: a scoped API key may only simulate views it is granted (no-op when
         # auth is disabled — the anonymous principal has full access).
         require_view_access(principal, req.view)
-
-        tools_out, all_results, seen = [], [], set()
-        for tool in spec.tools:
-            results = run_view_tool(ctx, tool, req.query, req.top_k)
-            tools_out.append({"tool": tool.name, "results": results})
-            for r in results:
-                if r["id"] not in seen:
-                    seen.add(r["id"])
-                    all_results.append(r)
-
-        scores = [r["score"] for r in all_results]
-        types = sorted({
-            r["metadata"].get("knowledge_type", "") for r in all_results
-        } - {""})
-        grounding = {
-            "hits": len(all_results),
-            "avg_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
-            "knowledge_types": types,
-        }
-        insight_routes.record_retrieval(ctx, "search", req.query, all_results)
-        return {"view": req.view, "tools": tools_out, "grounding": grounding}
+        result = run_simulation(ctx, req.view, req.query, req.top_k)
+        insight_routes.record_retrieval(
+            ctx, "search", req.query, unique_simulation_results(result)
+        )
+        return result
 
     # -- collections (knowledge bases) ----------------------------------
     @app.get("/api/collections")
@@ -590,6 +572,7 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
     # -- workspace quality, pre-execution advisor, metrics, source registry --
     app.include_router(workspace_routes.router)
     app.include_router(quality_routes.router)
+    app.include_router(validation_routes.router)
     app.include_router(insight_routes.router)
     app.include_router(source_routes.router, dependencies=[Depends(auth_dependency)])
 

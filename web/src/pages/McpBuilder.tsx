@@ -408,6 +408,22 @@ function EndpointRow({ endpoint, quality, onChange }: EndpointRowProps) {
         ) : (
           <div className="text-xs text-slate-400">No publish decisions yet.</div>
         )}
+        {endpoint.validation && (
+          <div className="rounded-lg border border-slate-100 p-3 text-xs dark:border-slate-800">
+            <div className="font-medium text-slate-700 dark:text-slate-200">
+              Validation {endpoint.validation.status}
+            </div>
+            <div className="mt-1 text-slate-500 dark:text-slate-400">
+              {endpoint.validation.passed} passed · {endpoint.validation.failed} failed ·{" "}
+              {endpoint.validation.scenario_count} scenarios
+            </div>
+            {endpoint.validation.latest_run && (
+              <div className="mt-1 text-slate-500 dark:text-slate-400">
+                Latest run {formatTimestamp(endpoint.validation.latest_run.created_at)}
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <Button
         size="sm"
@@ -470,6 +486,10 @@ function statusTone(status: ReadinessStatus) {
   if (status === "blocked") return "red";
   if (status === "validating") return "amber";
   return "amber";
+}
+
+function formatTimestamp(ts: number): string {
+  return new Date(ts * 1000).toLocaleString();
 }
 
 function PublishSnippet({ view }: { view: string }) {

@@ -68,3 +68,8 @@ def test_rbac_default_off_allows_simulate(client):
     # Auth disabled by default → anonymous full access, simulate works.
     resp = client.post("/api/simulate", json={"view": "product", "query": "hello"})
     assert resp.status_code == 200
+
+
+def test_validation_routes_wired(client):
+    assert client.get("/api/validation/scenarios").status_code == 200
+    assert client.get("/api/validation/summary").status_code == 200

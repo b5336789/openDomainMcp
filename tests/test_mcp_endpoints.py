@@ -14,6 +14,7 @@ from opendomainmcp.api.mcp_endpoints import _entry, mount_mcp_apps, router
 from opendomainmcp.config import Settings
 from opendomainmcp.context import Context
 from opendomainmcp.publish import PublishDecisionStore
+from opendomainmcp.validation import ValidationStore, build_run, build_scenario
 from opendomainmcp.views import VIEW_NAMES
 
 VIEWS_EXPECTED = ("product", "operations", "developer", "support", "architecture")
@@ -59,8 +60,16 @@ def test_list_endpoints_lists_all_views_unpublished(store, pipeline, fake_graph,
 def test_publish_state_requires_collection_decision(tmp_path):
     request = SimpleNamespace(base_url="http://testserver/")
     decisions = PublishDecisionStore(tmp_path)
+    validation = ValidationStore(tmp_path)
 
-    entry = _entry(request, "product", {"product"}, decisions, "other_collection")
+    entry = _entry(
+        request,
+        "product",
+        {"product"},
+        decisions,
+        validation,
+        "other_collection",
+    )
 
     assert entry["published"] is False
     assert entry["status"] == "unpublished"
@@ -96,6 +105,36 @@ def test_publish_with_override_records_decision(store, pipeline, fake_graph, tmp
     assert data["product"]["published"] is True
     assert data["developer"]["published"] is False
     assert data["product"]["latest_decision"]["override_reason"] == "Internal pilot only."
+
+
+def test_list_endpoints_includes_validation_summary(
+    store, pipeline, fake_graph, tmp_path
+):
+    scenario = build_scenario(
+        collection=store.stats()["collection"],
+        view="product",
+        name="Rollback",
+        query="rollback",
+    )
+    validation = ValidationStore(tmp_path)
+    validation.append_scenario(scenario)
+    validation.append_run(
+        build_run(
+            collection=store.stats()["collection"],
+            scenario=scenario,
+            result={
+                "view": "product",
+                "grounding": {"hits": 1, "avg_score": 0.9, "knowledge_types": []},
+                "tools": [{"tool": "search_features", "results": [{"id": "1"}]}],
+            },
+        )
+    )
+    tc, _, _ = _make_client(store, pipeline, fake_graph, tmp_path)
+
+    data = {entry["view"]: entry for entry in tc.get("/api/mcp/endpoints").json()}
+
+    assert data["product"]["validation"]["status"] == "passed"
+    assert data["product"]["validation"]["passed"] == 1
 
 
 def test_unpublish_records_decision(store, pipeline, fake_graph, tmp_path):

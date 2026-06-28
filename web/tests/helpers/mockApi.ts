@@ -79,6 +79,18 @@ export const DEFAULT_METRICS = {
   },
 };
 
+export const DEFAULT_VALIDATION_SUMMARY = {
+  collection: "default",
+  view: null,
+  status: "validating",
+  scenario_count: 0,
+  latest_run_count: 0,
+  passed: 0,
+  failed: 0,
+  pass_rate: 0,
+  latest_run: null,
+};
+
 export const DEFAULT_VIEWS = {
   product: {
     title: "Product View",
@@ -92,7 +104,7 @@ export const DEFAULT_VIEWS = {
       },
     ],
   },
-  ops: {
+  operations: {
     title: "Operations View",
     purpose: "Runbooks and operational guidance.",
     tools: [
@@ -127,42 +139,52 @@ export const DEFAULT_MCP_ENDPOINTS = [
     url: "http://localhost:8000/mcp/product",
     latest_decision: null,
     history: [],
+    validation: DEFAULT_VALIDATION_SUMMARY,
   },
   {
-    view: "ops",
+    view: "operations",
     title: "Operations View",
-    path: "/mcp/ops",
+    path: "/mcp/operations",
     published: true,
     status: "published",
-    url: "http://localhost:8000/mcp/ops",
+    url: "http://localhost:8000/mcp/operations",
     latest_decision: {
-      id: "decision-ops",
+      id: "decision-operations",
       collection: "default",
-      view: "ops",
+      view: "operations",
       action: "publish",
       status: "published",
       readiness_status: "ready",
       readiness_score: 94,
       override_reason: "",
-      endpoint_url: "http://localhost:8000/mcp/ops",
+      endpoint_url: "http://localhost:8000/mcp/operations",
       created_at: 1814052000,
       gates: [],
     },
     history: [
       {
-        id: "decision-ops",
+        id: "decision-operations",
         collection: "default",
-        view: "ops",
+        view: "operations",
         action: "publish",
         status: "published",
         readiness_status: "ready",
         readiness_score: 94,
         override_reason: "",
-        endpoint_url: "http://localhost:8000/mcp/ops",
+        endpoint_url: "http://localhost:8000/mcp/operations",
         created_at: 1814052000,
         gates: [],
       },
     ],
+    validation: {
+      ...DEFAULT_VALIDATION_SUMMARY,
+      view: "operations",
+      status: "passed",
+      scenario_count: 1,
+      latest_run_count: 1,
+      passed: 1,
+      pass_rate: 1,
+    },
   },
 ];
 
@@ -252,6 +274,15 @@ export const DEFAULT_QUALITY_EVIDENCE = {
       action: "Graph evidence is ready.",
     },
     {
+      id: "simulation",
+      gate: "Simulation",
+      status: "validating",
+      score: 0,
+      summary: "No validation scenarios have been run.",
+      details: ["0 scenarios", "0 latest runs", "0 passed", "0 failed"],
+      action: "Run validation scenarios in Agent Simulator.",
+    },
+    {
       id: "jobs",
       gate: "Jobs",
       status: "ready",
@@ -277,6 +308,8 @@ function buildDefaults(): Record<string, MockValue> {
     "GET /api/tasks": DEFAULT_TASKS,
     "GET /api/workspace/readiness": DEFAULT_READINESS,
     "GET /api/quality/evidence": DEFAULT_QUALITY_EVIDENCE,
+    "GET /api/validation/scenarios": [],
+    "GET /api/validation/summary": DEFAULT_VALIDATION_SUMMARY,
     "GET /api/items": [],
     "GET /api/articles": [],
   };
