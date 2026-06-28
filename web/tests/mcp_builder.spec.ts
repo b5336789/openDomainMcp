@@ -96,6 +96,7 @@ test.describe("mcp builder", () => {
       "GET /api/settings": DEFAULT_SETTINGS,
       "GET /api/mcp/endpoints": ENDPOINTS,
       "POST /api/mcp/endpoints": PUBLISHED,
+      "PATCH /api/settings": { updated: ["retrieve_approved_only"] },
       "GET /api/quality/evidence": DEFAULT_QUALITY_EVIDENCE,
     });
   });
@@ -148,20 +149,37 @@ test.describe("mcp builder", () => {
   test("refreshes publish readiness after saving retrieval policy", async ({
     page,
   }) => {
+    const saveEvents: string[] = [];
+    page.on("response", (response) => {
+      const request = response.request();
+      if (
+        request.method() === "PATCH" &&
+        new URL(request.url()).pathname === "/api/settings" &&
+        response.status() === 200
+      ) {
+        saveEvents.push("PATCH /api/settings 200");
+      }
+    });
+    page.on("request", (request) => {
+      if (
+        request.method() === "GET" &&
+        new URL(request.url()).pathname === "/api/quality/evidence"
+      ) {
+        saveEvents.push("GET /api/quality/evidence");
+      }
+    });
+
     await page.goto("/#/mcp");
 
     await expect(
       page.getByText("Published MCP views use approved-only hybrid retrieval."),
     ).toBeVisible();
+    saveEvents.length = 0;
 
-    const refreshedQuality = page.waitForRequest(
-      (request) =>
-        request.method() === "GET" &&
-        new URL(request.url()).pathname === "/api/quality/evidence",
-      { timeout: 3000 },
-    );
     await page.getByRole("button", { name: "Save policy" }).click();
 
-    await refreshedQuality;
+    await expect.poll(() => saveEvents.join(" > ")).toBe(
+      "PATCH /api/settings 200 > GET /api/quality/evidence",
+    );
   });
 });

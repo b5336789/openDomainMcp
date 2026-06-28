@@ -317,7 +317,7 @@ PRD 範圍內但 Phase 2 尚未補齊的項目。
 | E6A.3 | ✅ | Low | MCP Publish policy refresh | Save policy 後重新抓 Quality Evidence；Quality Lab 與 MCP Publish mock/test data 納入 Policy gate | `web/src/pages/McpBuilder.tsx`、`web/tests/helpers/mockApi.ts`、`web/tests/quality_lab.spec.ts`、`web/tests/mcp_builder.spec.ts` |
 | E6A.4 | ✅ | Low | Wave 6A docs and verification | 紀錄 publish policy gate 範圍與驗證結果，重新生成 docs HTML | `docs/DEVLOG.md`、`docs/TASKS.md`、`docs/*.html` |
 
-> **驗證**：backend quality/publish focused **22 passed**；後端全測 **495 passed, 3 skipped**；前端 build 成功；Playwright E2E **17 passed**。
+> **驗證**：backend quality/publish focused **23 passed**；後端全測 **496 passed, 3 skipped**；前端 build 成功；Playwright E2E **17 passed**。
 
 ---
 

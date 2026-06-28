@@ -133,6 +133,28 @@ def test_policy_gate_needs_review_when_approved_only_is_disabled(
     assert policy["action"] == "Enable approved-only retrieval before publishing."
 
 
+def test_policy_gate_needs_review_for_unsupported_search_mode(
+    store, pipeline, fake_graph, tmp_path
+):
+    ctx = Context(
+        settings=Settings(
+            data_dir=tmp_path,
+            retrieve_approved_only=True,
+            search_mode="keyword",
+        ),
+        store=store,
+        pipeline=pipeline,
+        graph=fake_graph,
+    )
+
+    policy = _card(compute_quality_evidence(ctx, tasks=[]), "policy")
+
+    assert policy["status"] == "needs_review"
+    assert policy["score"] == 70
+    assert policy["summary"] == "Search mode keyword is not publish-safe."
+    assert policy["action"] == "Select hybrid or vector search mode."
+
+
 def test_policy_gate_reports_auth_enabled_key_scope(
     store, pipeline, fake_graph, tmp_path
 ):

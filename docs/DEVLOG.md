@@ -300,8 +300,8 @@ Wave 6A 將 MCP Publish 既有 retrieval-policy 設定提升為可審計的 publ
 
 ### 11.2 驗證
 
-- Backend focused：`tests/test_quality_evidence.py tests/test_mcp_endpoints.py tests/test_publish_decisions.py` → **22 passed**。
+- Backend focused：`tests/test_quality_evidence.py tests/test_mcp_endpoints.py tests/test_publish_decisions.py` → **23 passed**。
 - Frontend focused：`npm run test:e2e -- tests/quality_lab.spec.ts tests/mcp_builder.spec.ts` → **3 passed**。
-- 後端全測：`PYTHONPATH=src .venv/bin/python -m pytest -q` → **495 passed, 3 skipped**。
+- 後端全測：`PYTHONPATH=src .venv/bin/python -m pytest -q` → **496 passed, 3 skipped**。
 - 前端 build：`npm run build` 成功，Vite 產出 53 modules。
 - 前端全測：`npm run test:e2e` → **17 passed**。
