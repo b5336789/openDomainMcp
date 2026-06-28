@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -16,9 +18,10 @@ from ..validation import (
 from ..views import VIEW_NAMES
 from .auth import ALL_VIEWS, auth_dependency, require_view_access
 from .deps import get_ctx
-from .simulation import run_simulation
+from .simulation import run_simulation, unique_simulation_results
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ScenarioRequest(BaseModel):
@@ -65,6 +68,33 @@ def _filter_allowed_scenarios(items: list[dict], principal: dict) -> list[dict]:
     return [item for item in items if item.get("view") in allowed]
 
 
+def _with_latest_runs(
+    store: ValidationStore,
+    collection: str,
+    scenarios: list[dict],
+) -> list[dict]:
+    hydrated = []
+    for scenario in scenarios:
+        runs = store.runs(
+            collection,
+            view=scenario.get("view"),
+            scenario_id=scenario.get("id"),
+        )
+        hydrated.append({**scenario, "latest_run": runs[0] if runs else None})
+    return hydrated
+
+
+def _record_validation_retrieval(ctx: Context, query: str, result: dict) -> None:
+    try:
+        from . import insight_routes
+
+        insight_routes.record_retrieval(
+            ctx, "search", query, unique_simulation_results(result)
+        )
+    except Exception as exc:  # noqa: BLE001 - metrics must not break validation
+        logger.warning("validation metric recording failed: %r", exc)
+
+
 def _summary_for_principal(
     store: ValidationStore,
     collection: str,
@@ -85,7 +115,9 @@ def _summary_for_principal(
         summary["latest_run"] for summary in summaries if summary.get("latest_run")
     ]
     latest = sorted(latest_runs, key=lambda run: run.get("created_at", 0), reverse=True)
-    latest_run_count = sum(int(summary.get("latest_run_count") or 0) for summary in summaries)
+    latest_run_count = sum(
+        int(summary.get("latest_run_count") or 0) for summary in summaries
+    )
     passed = sum(int(summary.get("passed") or 0) for summary in summaries)
     failed = sum(int(summary.get("failed") or 0) for summary in summaries)
     if latest_run_count == 0:
@@ -98,7 +130,9 @@ def _summary_for_principal(
         "collection": collection,
         "view": None,
         "status": status,
-        "scenario_count": sum(int(summary.get("scenario_count") or 0) for summary in summaries),
+        "scenario_count": sum(
+            int(summary.get("scenario_count") or 0) for summary in summaries
+        ),
         "latest_run_count": latest_run_count,
         "passed": passed,
         "failed": failed,
@@ -116,8 +150,11 @@ def list_scenarios(
     if view is not None:
         _validate_view(view)
         require_view_access(principal, view)
-    scenarios = ValidationStore(ctx.settings.data_dir).scenarios(_collection(ctx), view)
-    return _filter_allowed_scenarios(scenarios, principal)
+    collection = _collection(ctx)
+    store = ValidationStore(ctx.settings.data_dir)
+    scenarios = store.scenarios(collection, view)
+    scenarios = _filter_allowed_scenarios(scenarios, principal)
+    return _with_latest_runs(store, collection, scenarios)
 
 
 @router.post("/api/validation/scenarios")
@@ -151,6 +188,7 @@ def run_scenario(
     require_view_access(principal, scenario["view"])
     try:
         result = run_simulation(ctx, scenario["view"], scenario["query"])
+        _record_validation_retrieval(ctx, scenario["query"], result)
         run = build_run(collection=collection, scenario=scenario, result=result)
     except Exception as exc:
         run = build_run(collection=collection, scenario=scenario, error=str(exc))
@@ -174,10 +212,14 @@ def run_validation(
         query=_validate_required(body.query, "query"),
     )
     scenario = store.append_scenario(scenario)
-    result = run_simulation(ctx, body.view, scenario["query"], body.top_k)
-    run = store.append_run(
-        build_run(collection=collection, scenario=scenario, result=result)
-    )
+    result = None
+    try:
+        result = run_simulation(ctx, body.view, scenario["query"], body.top_k)
+        _record_validation_retrieval(ctx, scenario["query"], result)
+        run = build_run(collection=collection, scenario=scenario, result=result)
+    except Exception as exc:
+        run = build_run(collection=collection, scenario=scenario, error=str(exc))
+    run = store.append_run(run)
     return {
         "scenario": scenario,
         "run": run,

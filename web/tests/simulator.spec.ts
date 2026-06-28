@@ -38,7 +38,7 @@ const SIMULATE_RESULT = {
 const SCENARIO = {
   id: "scenario-1",
   collection: "default",
-  view: "ops",
+  view: "operations",
   name: "Rollback",
   query: "How do I roll back a failed deployment?",
   created_at: 1814052000,
@@ -48,7 +48,7 @@ const RUN = {
   id: "run-1",
   scenario_id: "scenario-1",
   collection: "default",
-  view: "ops",
+  view: "operations",
   query: "How do I roll back a failed deployment?",
   status: "passed",
   grounding_hits: 3,
@@ -64,14 +64,14 @@ test.describe("simulator", () => {
     await installApiMocks(page, {
       "GET /api/views": DEFAULT_VIEWS,
       "POST /api/simulate": SIMULATE_RESULT,
-      "GET /api/validation/scenarios": [SCENARIO],
+      "GET /api/validation/scenarios": [{ ...SCENARIO, latest_run: RUN }],
       "POST /api/validation/run": {
-        scenario: SCENARIO,
+        scenario: { ...SCENARIO, latest_run: RUN },
         run: RUN,
         result: SIMULATE_RESULT,
         summary: {
           collection: "default",
-          view: "ops",
+          view: "operations",
           status: "passed",
           scenario_count: 1,
           latest_run_count: 1,
@@ -131,6 +131,7 @@ test.describe("simulator", () => {
     await page.goto("/#/simulator");
     await expect(page.getByRole("heading", { name: "Validation scenarios" })).toBeVisible();
     await expect(page.getByText("Rollback", { exact: true })).toBeVisible();
+    await expect(page.getByText("latest passed · 3 hits")).toBeVisible();
 
     await page
       .getByPlaceholder("e.g. How do I roll back a failed deployment?")

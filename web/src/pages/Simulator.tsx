@@ -40,7 +40,19 @@ export default function Simulator() {
 
   async function loadScenarios(selectedView = view) {
     try {
-      setScenarios(await api.validationScenarios(selectedView));
+      const items = await api.validationScenarios(selectedView);
+      setScenarios(items);
+      setScenarioRuns((prev) => {
+        const next = { ...prev };
+        for (const scenario of items) {
+          if (scenario.latest_run) {
+            next[scenario.id] = scenario.latest_run;
+          } else {
+            delete next[scenario.id];
+          }
+        }
+        return next;
+      });
     } catch (e) {
       toast.show(String(e), "red");
     }
@@ -64,7 +76,9 @@ export default function Simulator() {
     setSavingScenario(true);
     try {
       const payload = await api.runValidation(view, task.trim(), scenarioName.trim());
-      setResult(payload.result);
+      if (payload.result) {
+        setResult(payload.result);
+      }
       setScenarios((prev) => {
         const without = prev.filter((scenario) => scenario.id !== payload.scenario.id);
         return [payload.scenario, ...without];

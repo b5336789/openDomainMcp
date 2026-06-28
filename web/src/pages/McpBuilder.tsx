@@ -417,6 +417,11 @@ function EndpointRow({ endpoint, quality, onChange }: EndpointRowProps) {
               {endpoint.validation.passed} passed · {endpoint.validation.failed} failed ·{" "}
               {endpoint.validation.scenario_count} scenarios
             </div>
+            {endpoint.validation.latest_run && (
+              <div className="mt-1 text-slate-500 dark:text-slate-400">
+                Latest run {formatTimestamp(endpoint.validation.latest_run.created_at)}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -481,6 +486,10 @@ function statusTone(status: ReadinessStatus) {
   if (status === "blocked") return "red";
   if (status === "validating") return "amber";
   return "amber";
+}
+
+function formatTimestamp(ts: number): string {
+  return new Date(ts * 1000).toLocaleString();
 }
 
 function PublishSnippet({ view }: { view: string }) {

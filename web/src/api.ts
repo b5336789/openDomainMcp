@@ -90,6 +90,7 @@ export interface ValidationScenario {
   name: string;
   query: string;
   created_at: number;
+  latest_run?: ValidationRun | null;
 }
 
 export interface ValidationRun {
@@ -122,7 +123,7 @@ export interface ValidationSummary {
 export interface ValidationRunResponse {
   scenario: ValidationScenario;
   run: ValidationRun;
-  result: SimulateResult;
+  result: SimulateResult | null;
   summary: ValidationSummary;
 }
 

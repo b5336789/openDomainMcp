@@ -511,19 +511,15 @@ def create_app(context: Context | None = None, context_factory=build_context) ->
     @app.post("/api/simulate")
     def simulate(req: SimulateRequest, ctx: Context = Depends(get_ctx),
                  principal: dict = Depends(auth_dependency)):
-        from .simulation import run_simulation
+        from .simulation import run_simulation, unique_simulation_results
 
         # RBAC: a scoped API key may only simulate views it is granted (no-op when
         # auth is disabled — the anonymous principal has full access).
         require_view_access(principal, req.view)
         result = run_simulation(ctx, req.view, req.query, req.top_k)
-        all_results, seen = [], set()
-        for tool in result["tools"]:
-            for item in tool["results"]:
-                if item["id"] not in seen:
-                    seen.add(item["id"])
-                    all_results.append(item)
-        insight_routes.record_retrieval(ctx, "search", req.query, all_results)
+        insight_routes.record_retrieval(
+            ctx, "search", req.query, unique_simulation_results(result)
+        )
         return result
 
     # -- collections (knowledge bases) ----------------------------------

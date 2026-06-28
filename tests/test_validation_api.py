@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from opendomainmcp.api import validation_routes
 from opendomainmcp.api.app import create_app
 from opendomainmcp.config import Settings
 from opendomainmcp.context import Context
+from opendomainmcp.metrics import MetricsRecorder
 from opendomainmcp.models import Chunk, KnowledgeUnit
 
 
@@ -46,7 +48,7 @@ def test_create_and_list_validation_scenarios(store, pipeline, fake_graph, tmp_p
     assert created["query"] == "How do I roll back?"
 
     listed = client.get("/api/validation/scenarios", params={"view": "product"}).json()
-    assert listed == [created]
+    assert listed == [{**created, "latest_run": None}]
     assert client.get("/api/validation/scenarios", params={"view": "developer"}).json() == []
 
 
@@ -99,6 +101,9 @@ def test_run_validation_scenario_records_passed_run(store, pipeline, fake_graph,
     assert summary["passed"] == 1
     assert summary["failed"] == 0
 
+    listed = client.get("/api/validation/scenarios", params={"view": "product"}).json()
+    assert listed[0]["latest_run"]["id"] == run["id"]
+
 
 def test_run_validation_records_failed_when_no_grounding(
     store, pipeline, fake_graph, tmp_path
@@ -147,6 +152,52 @@ def test_run_and_save_convenience_endpoint(store, pipeline, fake_graph, tmp_path
     assert payload["run"]["status"] == "passed"
     assert payload["result"]["view"] == "product"
     assert payload["summary"]["status"] == "passed"
+
+
+def test_run_and_save_records_failed_run_when_simulator_errors(
+    monkeypatch, store, pipeline, fake_graph, tmp_path
+):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("simulator exploded")
+
+    monkeypatch.setattr(validation_routes, "run_simulation", boom)
+    client, _ = _client(store, pipeline, fake_graph, tmp_path)
+
+    payload = client.post(
+        "/api/validation/run",
+        json={
+            "view": "product",
+            "name": "Rollback",
+            "query": "rollback",
+        },
+    ).json()
+
+    assert payload["scenario"]["name"] == "Rollback"
+    assert payload["run"]["status"] == "failed"
+    assert payload["run"]["error"] == "simulator exploded"
+    assert payload["result"] is None
+    assert payload["summary"]["status"] == "failed"
+    assert payload["summary"]["failed"] == 1
+
+
+def test_validation_run_records_retrieval_metrics(store, pipeline, fake_graph, tmp_path):
+    store.upsert([_approved_chunk()])
+    client, _ = _client(store, pipeline, fake_graph, tmp_path)
+
+    client.post(
+        "/api/validation/run",
+        json={
+            "view": "product",
+            "name": "Rollback",
+            "query": "rollback",
+        },
+    )
+
+    events = MetricsRecorder(tmp_path).read_events()
+    assert len(events) == 1
+    assert events[0].kind == "search"
+    assert events[0].query == "rollback"
+    assert events[0].hits > 0
 
 
 def test_validation_routes_require_api_key_when_auth_enabled(

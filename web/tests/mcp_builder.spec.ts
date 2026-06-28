@@ -28,6 +28,21 @@ const DECISION = {
   ],
 };
 
+const VALIDATION_RUN = {
+  id: "run-1",
+  scenario_id: "scenario-1",
+  collection: "default",
+  view: "product",
+  query: "How do I roll back?",
+  status: "passed",
+  grounding_hits: 3,
+  avg_score: 0.812,
+  tool_results: 2,
+  knowledge_types: ["Runbook"],
+  error: "",
+  created_at: 1814052100,
+};
+
 const ENDPOINTS = [
   {
     view: "product",
@@ -47,7 +62,7 @@ const ENDPOINTS = [
       passed: 1,
       failed: 0,
       pass_rate: 1,
-      latest_run: null,
+      latest_run: VALIDATION_RUN,
     },
   },
 ];
@@ -70,7 +85,7 @@ const PUBLISHED = {
     passed: 1,
     failed: 0,
     pass_rate: 1,
-    latest_run: null,
+    latest_run: VALIDATION_RUN,
   },
 };
 
@@ -106,6 +121,7 @@ test.describe("mcp builder", () => {
 
     await expect(row.getByText("unpublished")).toBeVisible();
     await expect(row.getByText("Validation passed")).toBeVisible();
+    await expect(row.getByText(/Latest run/)).toBeVisible();
 
     await row.getByRole("button", { name: "Publish" }).click();
 
