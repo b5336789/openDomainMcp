@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from opendomainmcp.api.app import create_app
 from opendomainmcp.config import Settings
 from opendomainmcp.context import Context
+from opendomainmcp.tasks.store import TaskStore
 
 
 @pytest.fixture
@@ -24,6 +25,11 @@ def _wait(tc, job_id, statuses, tries=200):
             return t
         time.sleep(0.02)
     raise AssertionError(f"task {job_id} never reached {statuses}")
+
+
+def _task_store(tc):
+    tc.get("/api/tasks")
+    return tc.app.state.task_store
 
 
 def test_create_ingest_task_runs_to_done(client, tmp_path):
@@ -72,3 +78,62 @@ def test_clear_finished(client, tmp_path):
     _wait(tc, job_id, {"done"})
     cleared = tc.post("/api/tasks/clear").json()["cleared"]
     assert cleared >= 1
+
+
+def test_retry_error_task_returns_new_queued_task(client):
+    tc, ctx, _ = client
+    store = _task_store(tc)
+    original = store.create("ingest", "Ingest failed", ctx.store.stats()["collection"], {"path": "/missing"})
+    store.transition(
+        original.id,
+        "error",
+        error="FileNotFoundError('missing')",
+        error_type="FileNotFoundError",
+        error_message="missing",
+    )
+
+    resp = tc.post(f"/api/tasks/{original.id}/retry")
+
+    assert resp.status_code == 200
+    retry = resp.json()
+    assert retry["id"] != original.id
+    assert retry["status"] == "queued"
+    assert retry["type"] == "ingest"
+    assert retry["title"] == "Ingest failed"
+    assert retry["params"] == {"path": "/missing"}
+    assert retry["result"]["retry_of"] == original.id
+
+
+def test_retry_unknown_task_is_404(client):
+    tc, _, _ = client
+
+    resp = tc.post("/api/tasks/does-not-exist/retry")
+
+    assert resp.status_code == 404
+
+
+def test_retry_non_retryable_task_is_409(client):
+    tc, ctx, _ = client
+    store = _task_store(tc)
+    queued = store.create("ingest", "Queued", ctx.store.stats()["collection"], {"path": "/src"})
+
+    resp = tc.post(f"/api/tasks/{queued.id}/retry")
+
+    assert resp.status_code == 409
+
+
+def test_list_tasks_recovers_persisted_running_task(client):
+    tc, ctx, tmp_path = client
+    store = TaskStore(tmp_path)
+    stale = store.create("ingest", "Interrupted ingest", ctx.store.stats()["collection"], {"path": "/src"})
+    store.update(stale.id, status="running", cancel_requested=True)
+
+    resp = tc.get("/api/tasks")
+
+    assert resp.status_code == 200
+    row = next(task for task in resp.json()["tasks"] if task["id"] == stale.id)
+    assert row["status"] == "queued"
+    assert row["cancel_requested"] is False
+    assert row["recovery_count"] == 1
+    assert row["recovered_at"] is not None
+    assert row["last_transition"] == "recovered_running_to_queued"

@@ -107,6 +107,11 @@ function TaskCard({ task, onChanged }: { task: TaskItem; onChanged: () => void }
   const [children, setChildren] = useState<TaskChild[] | null>(null);
   const pct = task.total > 0 ? Math.round((task.done / task.total) * 100) : 0;
   const active = task.status === "queued" || task.status === "running";
+  const retryable = task.status === "error" || task.status === "cancelled";
+  const recoveryCount = task.recovery_count ?? 0;
+  const errorText = task.error_type || task.error_message
+    ? `${task.error_type ?? "Error"}${task.error_message ? `: ${task.error_message}` : ""}`
+    : task.error;
 
   async function toggle() {
     const next = !expanded;
@@ -121,7 +126,11 @@ function TaskCard({ task, onChanged }: { task: TaskItem; onChanged: () => void }
   }
 
   return (
-    <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+    <div
+      role="group"
+      aria-label={task.title}
+      className="rounded-lg border border-slate-200 p-3 dark:border-slate-800"
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">
@@ -137,13 +146,25 @@ function TaskCard({ task, onChanged }: { task: TaskItem; onChanged: () => void }
             <span className="rounded bg-slate-100 px-1.5 text-[10px] text-slate-500 dark:bg-slate-800">
               {task.collection}
             </span>
+            {recoveryCount > 0 && (
+              <span className="rounded bg-amber-50 px-1.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">
+                Recovered {recoveryCount}
+              </span>
+            )}
           </div>
         </div>
-        {active && (
-          <Button variant="secondary" onClick={() => api.cancelTask(task.id).then(onChanged)}>
-            Cancel
-          </Button>
-        )}
+        <div className="flex shrink-0 items-center gap-2">
+          {retryable && (
+            <Button variant="secondary" onClick={() => api.retryTask(task.id).then(onChanged)}>
+              Retry
+            </Button>
+          )}
+          {active && (
+            <Button variant="secondary" onClick={() => api.cancelTask(task.id).then(onChanged)}>
+              Cancel
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
@@ -153,8 +174,8 @@ function TaskCard({ task, onChanged }: { task: TaskItem; onChanged: () => void }
         />
       </div>
 
-      {task.error && (
-        <p className="mt-2 break-words text-xs text-red-500">{task.error}</p>
+      {errorText && (
+        <p className="mt-2 break-words text-xs text-red-500">{errorText}</p>
       )}
 
       {task.total > 0 && (

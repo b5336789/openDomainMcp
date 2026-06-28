@@ -387,6 +387,37 @@ def test_workspace_readiness_uses_app_task_store_and_filters_collection(ctx):
     assert data["blockers"] == []
 
 
+def test_workspace_readiness_recovers_persisted_running_task(ctx):
+    task_store = TaskStore(ctx.settings.data_dir)
+    stale = task_store.create(
+        "ingest",
+        "Interrupted ingest",
+        ctx.store.stats()["collection"],
+        {},
+    )
+    task_store.update(stale.id, status="running", cancel_requested=True)
+    ctx.store.upsert([_chunk("approved knowledge", "approved.md", "approved")])
+    app = FastAPI()
+    app.state.context = ctx
+    app.state.contexts = {}
+    app.include_router(workspace_routes.router)
+    client = TestClient(app)
+
+    resp = client.get("/api/workspace/readiness")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["job_health"] == {
+        **EMPTY_JOB_HEALTH,
+        "queued": 1,
+    }
+    recovered = TaskStore(ctx.settings.data_dir).get(stale.id)
+    assert recovered.status == "queued"
+    assert recovered.cancel_requested is False
+    assert recovered.recovery_count == 1
+    assert recovered.recovered_at is not None
+
+
 def test_workspace_readiness_degrades_when_task_store_cannot_load(ctx):
     app = FastAPI()
     app.state.context = ctx

@@ -5,10 +5,20 @@ import os
 import threading
 import time
 import uuid
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
-from .models import Task, derive_child_status
+from .models import (
+    JOB_CANCELLED,
+    JOB_QUEUED,
+    JOB_RUNNING,
+    RETRYABLE_TERMINAL_STATUSES,
+    TERMINAL_STATUSES,
+    Task,
+    derive_child_status,
+    validate_task_status,
+)
 
 HISTORY_CAP = 100_000
 THROTTLE_SECONDS = 2.0
@@ -69,7 +79,7 @@ class TaskStore:
         return items
 
     def next_queued(self) -> Optional[Task]:
-        queued = [t for t in self._tasks.values() if t.status == "queued"]
+        queued = [t for t in self._tasks.values() if t.status == JOB_QUEUED]
         queued.sort(key=lambda t: t.created_at)
         return queued[0] if queued else None
 
@@ -78,12 +88,121 @@ class TaskStore:
             t = self._tasks.get(task_id)
             if t is None:
                 return
+            if "status" in fields:
+                validate_task_status(fields["status"])
             for k, v in fields.items():
                 setattr(t, k, v)
             if throttle and not self._should_flush(t):
                 return
             self._last_write[task_id] = (time.time(), t.done)
             self._persist()
+
+    def transition(self, task_id: str, status: str, **fields) -> Optional[Task]:
+        validate_task_status(status)
+        with self._lock:
+            t = self._tasks.get(task_id)
+            if t is None:
+                return None
+            previous = t.status
+            t.status = status
+            t.last_transition = f"{previous}_to_{status}"
+            for k, v in fields.items():
+                setattr(t, k, v)
+            if status in TERMINAL_STATUSES and t.finished_at is None:
+                t.finished_at = time.time()
+            self._last_write[task_id] = (time.time(), t.done)
+            self._persist()
+            return t
+
+    def start(
+        self,
+        task_id: str,
+        cancelled_fields: Optional[dict] = None,
+        **fields,
+    ) -> Optional[Task]:
+        with self._lock:
+            t = self._tasks.get(task_id)
+            if t is None:
+                return None
+            if t.cancel_requested:
+                previous = t.status
+                t.status = JOB_CANCELLED
+                t.last_transition = f"{previous}_to_{JOB_CANCELLED}"
+                for k, v in (cancelled_fields or {}).items():
+                    setattr(t, k, v)
+                if t.finished_at is None:
+                    t.finished_at = time.time()
+                self._last_write[task_id] = (time.time(), t.done)
+                self._persist()
+                return t
+            previous = t.status
+            t.status = JOB_RUNNING
+            t.last_transition = f"{previous}_to_{JOB_RUNNING}"
+            t.attempts += 1
+            for k, v in fields.items():
+                setattr(t, k, v)
+            self._last_write[task_id] = (time.time(), t.done)
+            self._persist()
+            return t
+
+    def mark_recovered(self, task_id: str) -> bool:
+        with self._lock:
+            t = self._tasks.get(task_id)
+            if t is None or t.status != JOB_RUNNING:
+                return False
+            self._apply_recovered(t, time.time())
+            self._last_write[task_id] = (time.time(), t.done)
+            self._persist()
+            return True
+
+    def recover_running(self) -> int:
+        with self._lock:
+            now = time.time()
+            count = 0
+            for t in self._tasks.values():
+                if t.status != JOB_RUNNING:
+                    continue
+                self._apply_recovered(t, now)
+                self._last_write[t.id] = (now, t.done)
+                count += 1
+            if count:
+                self._persist()
+            return count
+
+    def _apply_recovered(self, t: Task, recovered_at: float) -> None:
+        t.status = JOB_QUEUED
+        t.cancel_requested = False
+        t.started_at = None
+        t.finished_at = None
+        t.recovery_count += 1
+        t.recovered_at = recovered_at
+        t.last_transition = "recovered_running_to_queued"
+
+    def retry(self, task_id: str) -> Task:
+        with self._lock:
+            original = self._tasks.get(task_id)
+            if original is None:
+                raise KeyError(task_id)
+            if original.status not in RETRYABLE_TERMINAL_STATUSES:
+                raise ValueError(f"task {task_id} is not retryable from status {original.status}")
+            now = time.time()
+            retry = Task(
+                id=uuid.uuid4().hex,
+                type=original.type,
+                title=original.title,
+                collection=original.collection,
+                params=deepcopy(original.params),
+                created_at=now,
+                result={
+                    "retry_of": original.id,
+                    "retry_status": original.status,
+                    "retry_created_at": now,
+                },
+                last_transition=f"retry_of_{original.id}",
+            )
+            self._tasks[retry.id] = retry
+            self._persist()
+            return retry
 
     def _should_flush(self, t: Task) -> bool:
         ts, done = self._last_write.get(t.id, (0.0, 0))
